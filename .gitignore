@@ -1,0 +1,15 @@
+src/conparser.out
+src/conparser.exe
+
+src/conparser/strtoobj
+src/conparser/strtoobj.exe
+
+src/conparser/dot
+src/conparser/dot.exe
+
+src/conparser/exports/markup
+src/conparser/exports/markup.exe
+
+
+examples/markup
+examples/markup.exe
