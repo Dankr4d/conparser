@@ -3,6 +3,7 @@
     * Pragama to allow floats starting with dot
     * Range check in write proc
     * ValidBools `true`, `false` seq len check in parse and write proc
+    * Add normalize to ValidBools pragma
     * If Setting pragma passed without string, use attribute name.
       Same for prefix, but maybe use another pragma name then?
 ]#
