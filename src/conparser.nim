@@ -1,11 +1,13 @@
 #[
   TODOS:
     * Pragama to allow floats starting with dot
-    * Range check in write proc
-    * ValidBools `true`, `false` seq len check in parse and write proc
-    * Add normalize to ValidBools pragma
+    * Valid check in write proc
+    * Valid `true`, `false` seq len check in parse and write proc
+    * Add normalize to Valid pragma
     * If Setting pragma passed without string, use attribute name.
       Same for prefix, but maybe use another pragma name then?
+    * Remove valid attribute from line and add a valid proc which checks validSetting and validValue
+    * Reading/Storing multiline strings
 ]#
 
 import streams
@@ -25,6 +27,60 @@ export typeinfo
 export strtoobj
 export sequtils
 
+
+
+macro ConTypeValidation(tdesc: typedesc): untyped =
+  let impl: NimNode = tdesc.getTypeInst()[1].getImpl()
+
+  # Validate object pragmas
+  let nObjectPragma: NimNode = impl.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+  for nExprColonExpr in nObjectPragma.children():
+    if nExprColonExpr[0].strVal in ["Setting", "Default", "Format", "Valid"]:
+      error(nExprColonExpr[0].strVal & " not allowed in object annotation.", nExprColonExpr[0])
+
+  # Validate object attribute pragmas
+  let nAttrRecList: NimNode = impl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList)
+  for identDefs in nAttrRecList.children:
+    let nPragma: NimNode = identDefs.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+    var nAttrTypeSym: NimNode = identDefs[1]
+    var nkAttrType: NimNodeKind = nAttrTypeSym.getType().kind
+
+    for nExprColonExpr in nPragma.children:
+      case nExprColonExpr[0].strVal:
+      of "Prefix":
+        # Prefix is not allowed on attributes
+        error("Prefix is not allowed on attributes.", nExprColonExpr[0])
+      of "Format":
+        # Validate if `Format` is only applied to attributes of type object
+        if nkAttrType != nnkObjectTy:
+          error("Format pragma is only allowed on attributes of kind " & $nnkObjectTy & ", not of " & $nkAttrType & ".", nExprColonExpr[0])
+      of "Default":
+        # Validate if `Default` value type is the same as type of attribute
+        var nTypeInstAttr: NimNode
+        var nTypeInstDefaultPragma: NimNode
+        if nAttrTypeSym.kind == nnkBracketExpr and nAttrTypeSym[0].strVal == "range":
+          let nMinVal: NimNode = nAttrTypeSym[1][1]
+          let nMaxVal: NimNode = nAttrTypeSym[1][2]
+          nTypeInstAttr = nMinVal.getTypeInst()
+          nTypeInstDefaultPragma = nExprColonExpr[1].getTypeInst()
+          if nTypeInstAttr != nTypeInstDefaultPragma:
+            error("Invalid Default value. You passed " & $nTypeInstDefaultPragma & ", but expected " & $nTypeInstAttr & ".", nExprColonExpr[1])
+          case nTypeInstAttr.typeKind:
+          of ntyInt, ntyInt8, ntyInt16, ntyInt32, ntyInt64, ntyUInt, ntyUInt8, ntyUInt16, ntyUInt32, ntyUInt64:
+            if nExprColonExpr[1].intVal < nMinVal.intVal or nExprColonExpr[1].intVal > nMaxVal.intVal:
+              error("Default lower or higher (range), SomeInt.")
+          of ntyFloat, ntyFloat32, ntyFloat64, ntyFloat128:
+            if nExprColonExpr[1].floatVal < nMinVal.floatVal or nExprColonExpr[1].floatVal > nMaxVal.floatVal:
+              error("Default lower or higher (range), SomeFloat.")
+          else:
+            error("NOT IMPLEMENTED!")
+        else:
+          nTypeInstAttr = nAttrTypeSym.getTypeInst()
+          nTypeInstDefaultPragma = nExprColonExpr[1].getTypeInst()
+          if nTypeInstAttr != nTypeInstDefaultPragma:
+            error("Invalid Default value. You passed " & $nTypeInstDefaultPragma & ", but expected " & $nTypeInstAttr & ".", nExprColonExpr[1])
+
+
 type
   Bools* = object
     `true`*: seq[string]
@@ -32,10 +88,9 @@ type
 
 template Prefix*(val: string) {.pragma.}
 template Setting*(val: string) {.pragma.}
-template Default*(val: string | SomeFloat | enum | bool) {.pragma.}
+template Default*(val: string | SomeInteger | SomeFloat | enum | bool) {.pragma.}
 template Format*(val: string) {.pragma.}
-template Range*(val: tuple[min, max: SomeFloat]) {.pragma.} # TODO: Use range
-template ValidBools*(val: Bools) {.pragma.}
+template Valid*(val: Bools) {.pragma.}
 
 
 type
@@ -45,7 +100,9 @@ type
     invalidLines: seq[uint] # Invalid lines for a faster lookup
     multipleSettings: Table[uint, seq[uint]] # key = first line found, value = lines which same setting found afterwards
     settingsNotFound*: seq[ConSettingNotFound] # Settings which hasn't been found
-    validRanges: Table[string, tuple[min, max: float]] # key = attr name, value = valid values
+    # validFloatRanges: Table[string, tuple[min, max: float]] # key = attr name, value = valid values
+    # validUIntRanges: Table[string, tuple[min, max: uint]] # key = attr name, value = valid values
+    # validIntRanges: Table[string, tuple[min, max: int]] # key = attr name, value = valid values
     validEnums: Table[string, seq[string]] # key = attr name, value = valid values
     validBools: Table[string, Bools] # key = attr name, value = valid values
     validFormats: Table[string, string] # key = attr name, value = valid values
@@ -98,6 +155,8 @@ func validFormat*(report: ConReport, line: ConLine | ConSettingNotFound): string
 
 
 proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
+  ConTypeValidation(T)
+
   var tableFound: Table[string, uint] # table of first lineIdx setting was found
 
   # fill valid* tables
@@ -110,18 +169,27 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
       const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
       when type(val) is enum:
         result.report.validEnums[setting] = type(val).toSeq().mapIt($it)
-      elif type(val) is SomeFloat:
-        when result.obj.dot(key).hasCustomPragma(Range):
-          result.report.validRanges[setting] = result.obj.dot(key).getCustomPragmaVal(Range)
-        else:
-          result.report.validRanges[setting] = (low(float), high(float))
+      elif type(val) is range:
+        discard # TODO
+      #   when result.obj.dot(key).hasCustomPragma(Default):
+      #     const value = result.obj.dot(key).getCustomPragmaVal(Default)[0]
+      #   when type(val) is SomeFloat:
+      #     result.report.validFloatRanges[setting] = rangeTpl
+      #   elif type(val) is SomeSignedInt:
+      #     result.report.validIntRanges[setting] = rangeTpl
+      #   elif type(val) is SomeUnsignedInt:
+      #     result.report.validUIntRanges[setting] = rangeTpl
+      #   else:
+      #     {.fatal: "Range type '" & type(val) & "' not implemented.".}
       elif type(val) is bool:
-        when result.obj.dot(key).hasCustomPragma(ValidBools):
-          result.report.validBools[setting] = result.obj.dot(key).getCustomPragmaVal(ValidBools)
+        when result.obj.dot(key).hasCustomPragma(Valid):
+          result.report.validBools[setting] = result.obj.dot(key).getCustomPragmaVal(Valid)
         else:
-          result = Bools(`true`: @["y", "yes", "true", "1", "on"], `false`: @["n", "no", "false", "0", "off"])
+          result.report.validBools[setting] = Bools(`true`: @["y", "yes", "true", "1", "on"], `false`: @["n", "no", "false", "0", "off"])
       elif type(val) is object:
         result.report.validFormats[setting] = result.obj.dot(key).getCustomPragmaVal(Format)
+      elif type(val) is string:
+        discard # All strings are valid
       else:
         {.fatal: "Attribute type '" & type(val) & "' not implemented.".}
 
@@ -169,24 +237,27 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
             try:
               when type(val) is enum:
                 result.obj.dot(key) = parseEnum[type(val)](line.value)
+              elif type(val) is range:
+                when type(val) is SomeFloat:
+                  let value: float = parseFloat(line.value)
+                elif type(val) is SomeSignedInt:
+                  let value: int = parseInt(line.value)
+                elif type(val) is SomeUnsignedInt:
+                  let value: uint = parseUInt(line.value)
+                if value >= low(type(val)) and value <= high(type(val)):
+                  result.obj.dot(key) = value
+                else:
+                  line.valid = false
+                  line.validValue = false
               elif type(val) is SomeFloat:
                 if line.value.startsWith('.'):
                   line.valid = false
                   line.validValue = false
                 else:
-                  when result.obj.dot(key).hasCustomPragma(Range):
-                    let valFloat: SomeFloat = parseFloat(line.value)
-                    const rangeTpl: tuple[min, max: SomeFloat] = result.obj.dot(key).getCustomPragmaVal(Range)
-                    if valFloat >= rangeTpl.min and valFloat <= rangeTpl.max:
-                      result.obj.dot(key) = valFloat
-                    else:
-                      line.valid = false
-                      line.validValue = false
-                  else:
-                    result.obj.dot(key) = parseFloat(line.value)
+                  result.obj.dot(key) = parseFloat(line.value) # TODO: low/high check
               elif type(val) is bool:
-                when result.obj.dot(key).hasCustomPragma(ValidBools):
-                  const validBools: Bools = result.obj.dot(key).getCustomPragmaVal(ValidBools)
+                when result.obj.dot(key).hasCustomPragma(Valid):
+                  const validBools: Bools = result.obj.dot(key).getCustomPragmaVal(Valid)
                   if line.value in validBools.`true`:
                     result.obj.dot(key) = true
                   elif line.value in validBools.`false`:
@@ -198,6 +269,12 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
                   result.obj.dot(key) = parseBool(line.value)
               elif type(val) is object:
                 result.obj.dot(key) = parse[type(val)](result.obj.dot(key).getCustomPragmaVal(Format), line.value)
+              elif type(val) is string:
+                if line.value.len > 0:
+                  result.obj.dot(key) = line.value
+                else:
+                  line.valid = false
+                  line.validValue = false
               else:
                 {.fatal: "Attribute type '" & type(val) & "' not implemented.".}
             except ValueError:
@@ -209,18 +286,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
             line.validValue = false
           if not line.valid:
             when result.obj.dot(key).hasCustomPragma(Default):
-              when result.obj.dot(key) is SomeFloat:
-                const valDefault: SomeFloat = result.obj.dot(key).getCustomPragmaVal(Default)[0] # TODO: Why the fuck do I get a tuple?!?
-                when result.obj.dot(key).hasCustomPragma(Range):
-                  const rangeTpl: tuple[min, max: SomeFloat] = result.obj.dot(key).getCustomPragmaVal(Range)
-                  when valDefault < rangeTpl.min or valDefault > rangeTpl.max:
-                    {.fatal: "Default value " & $valDefault & " is not in range (" & $rangeTpl.min & ", " & $rangeTpl.max & ").".}
-                  else:
-                    result.obj.dot(key) = valDefault
-                else:
-                    result.obj.dot(key) = valDefault
-              else:
-                result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0] # TODO: Why the fuck do I get a tuple?!?
+              result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
           break # Setting found, break
     if not foundSetting:
       line.valid = false
@@ -252,6 +318,8 @@ proc readCon*[T](path: string): tuple[obj: T, report: ConReport] =
 
 
 proc writeCon*[T](t: T, path: string) =
+  ConTypeValidation(T)
+
   let fileStream: FileStream = newFileStream(path, fmWrite)
 
   if not isNil(fileStream):
@@ -267,12 +335,16 @@ proc writeCon*[T](t: T, path: string) =
 
         when type(val) is enum:
           fileStream.writeLine(setting & " " & $t.dot(key))
+        elif type(val) is range:
+          when type(val) is SomeFloat:
+            fileStream.writeLine(setting & " " & $round(t.dot(key), 6)) # TODO: Add Round pragma
+          elif type(val) is SomeInteger:
+            fileStream.writeLine(setting & " " & $round(t.dot(key), 6)) # TODO: Add Round pragma
         elif type(val) is SomeFloat:
           fileStream.writeLine(setting & " " & $round(t.dot(key), 6)) # TODO: Add Round pragma
         elif type(val) is bool:
-          when t.dot(key).hasCustomPragma(ValidBools):
-            const validBools: Bools = t.dot(key).getCustomPragmaVal(ValidBools)
-            # fileStream.writeLine(setting & " " & validBools.dot($t.dot(key))[0])
+          when t.dot(key).hasCustomPragma(Valid):
+            const validBools: Bools = t.dot(key).getCustomPragmaVal(Valid)
             if t.dot(key):
               fileStream.writeLine(setting & " " & validBools.`true`[0])
             else:
@@ -281,6 +353,8 @@ proc writeCon*[T](t: T, path: string) =
             fileStream.writeLine(setting & " " & $t.dot(key))
         elif type(val) is object:
           fileStream.writeLine(setting & " " & t.dot(key).serialize(t.dot(key).getCustomPragmaVal(Format)))
+        elif type(val) is string:
+          fileStream.writeLine(setting & " " & t.dot(key))
         else:
           {.fatal: "Attribute type '" & type(val) & "' not implemented.".}
 
@@ -299,14 +373,15 @@ when isMainModule:
     MyObj* {.Prefix: "MyObj.".} = object
       eula* {.Setting: "Eula", Default: Denied.}: AcceptedDenied
       resolution* {.Setting: "Resolution", Format: "[width]x[height]@[frequence]Hz".}: Resolution
-      distance* {.Setting: "Distance", Range: (0.0, 1.0), Default: 1.0}: float
-      enabled* {.Setting: "Enabled", ValidBools: Bools(`true`: @["1"], `false`: @["0"]).}: bool
+      distanceRange* {.Setting: "Distance", Default: 1.0f32}: range[0.0f32 .. 1.0f32]
+      enabled* {.Setting: "Enabled", Valid: Bools(`true`: @["1"], `false`: @["0"]).}: bool
+      name* {.Setting: "Name", Default: "Peter Pan".}: string
   var stream: StringStream = newStringStream("""
 MyObj.Eula accepted
 MyObj.Resolution 800x600@60Hz
 MyObj.Distance 0.8
 MyObj.Enabled 1
-  """)
+""")
   var (obj, report) = readCon[MyObj](stream)
   echo "=== OBJ ==="
   echo obj
