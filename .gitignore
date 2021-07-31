@@ -4,8 +4,17 @@ src/conparser.exe
 src/conparser/strtoobj
 src/conparser/strtoobj.exe
 
-src/conparser/dot
-src/conparser/dot.exe
+src/conparser/private/dot
+src/conparser/private/dot.exe
+
+src/conparser/private/parse
+src/conparser/private/parse.exe
+
+src/conparser/private/serialize
+src/conparser/private/serialize.exe
+
+src/conparser/private/validate
+src/conparser/private/validate.exe
 
 src/conparser/exports/markup
 src/conparser/exports/markup.exe

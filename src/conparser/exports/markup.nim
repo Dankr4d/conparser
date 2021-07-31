@@ -5,8 +5,8 @@ proc validValuesMarkup(report: ConReport, line: ConLine | ConSettingNotFound, ma
   case line.kind:
   of akEnum:
     result &= "[" & markupEscapeProc(report.validEnum(line).join(", ")) & "]"
-  of akFloat, akFloat32, akFloat64, akFloat128:
-    let validRange: tuple[min, max: SomeFloat] = report.validRange(line)
+  of akFloat..akFloat128:
+    let validRange: tuple[min, max: BiggestFloat] = validRange(BiggestFloat, report, line)
     result &= "[" & $validRange.min & " .. " & $validRange.max & "]"
   of akBool:
     let validBools: Bools = report.validBools(line)
@@ -18,7 +18,7 @@ proc validValuesMarkup(report: ConReport, line: ConLine | ConSettingNotFound, ma
     raise newException(ValueError, "Kind '" & $line.kind & "' not implemented.")
 
 proc markup*(report: ConReport, markupEscapeProc: proc(str: string): string): string =
-  var multipleSettings: seq[uint] = toSeq(report.multipleSettingsLineIdx)
+  var multipleSettings: seq[uint] = toSeq(report.redundantLineIdxs)
   for line in report.lines:
     if line.valid:
       result &= "<span foreground=\"#DCDCDC\">"

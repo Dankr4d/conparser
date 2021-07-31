@@ -4,8 +4,11 @@
 ]#
 
 import parseutils
-import dot
-from strutils import parseInt, parseUInt, parseBool
+import private/parse
+import private/serialize
+import private/dot
+import pragmas
+import macros
 
 
 proc serialize*[T](t: T, format: string): string =
@@ -19,15 +22,7 @@ proc serialize*[T](t: T, format: string): string =
     result &= tokenDelimiters
     for key, val in t.fieldPairs:
       if key == tokenAttribute:
-        when type(t.dot(key)) is SomeInteger:
-          result &= $t.dot(key)
-        elif type(t.dot(key)) is string:
-          result &= t.dot(key)
-        elif type(t.dot(key)) is bool:
-          result &= $t.dot(key).int
-        else:
-          {.fatal: "Type '" & $type(result.dot(key)) & "' not implemented!".}
-
+        result &= serialize(t.dot(key))
 
 proc parse*[T](format, value: string): T =
   var tokenAttribute, tokenValue, tokenDelimiters: string
@@ -44,18 +39,16 @@ proc parse*[T](format, value: string): T =
     posValue += value.parseUntil(tokenValue, tokenDelimiters, posValue)
     posValue += tokenDelimiters.len
 
+    var valid: bool = false
     for key, val in result.fieldPairs:
       if key == tokenAttribute:
-        when type(result.dot(key)) is SomeSignedInt:
-          result.dot(key) = type(result.dot(key))(parseInt(tokenValue))
-        elif type(result.dot(key)) is SomeUnsignedInt:
-          result.dot(key) = type(result.dot(key))(parseUInt(tokenValue))
-        elif type(result.dot(key)) is string:
-          result.dot(key) = tokenValue
-        elif type(result.dot(key)) is bool:
-          result.dot(key) = parseBool(tokenValue)
-        else:
-          {.error: "Type '" & $type(result.dot(key)) & "' not implemented!".}
+        try:
+          valid = parseAll(result.dot(key), tokenValue)
+        except ValueError:
+          discard # valid already set to false
+        if not valid:
+          when result.dot(key).hasCustomPragma(Default):
+            result.dot(key) = result.dot(key).getCustomPragmaVal(Default)[0]
 
 
 when isMainModule:

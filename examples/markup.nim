@@ -40,8 +40,8 @@ type
     textureFilteringQuality* {.Setting: "setTextureFilteringQuality".}: LowMediumHigh
     resolution* {.Setting: "setResolution", Format: "[width]x[height]@[frequence]Hz".}: Resolution
     antialiasing* {.Setting: "setAntialiasing".}: Antialiasing
-    viewDistanceScale* {.Setting: "setViewDistanceScale", Range: (0.0, 1.0), Default: 1.0}: float # 0.0 = 50%, 1.0 = 100%
-    useBloom* {.Setting: "setUseBloom", ValidBools: Bools(`true`: @["1", "on"], `false`: @["0", "off"]).}: bool
+    viewDistanceScale* {.Setting: "setViewDistanceScale", Default: 1.0f32}: range[0.0f32 .. 1.0f32] # 0.0 = 50%, 1.0 = 100%
+    useBloom* {.Setting: "setUseBloom", Valid: Bools(`true`: @["1", "on"], `false`: @["0", "off"], normalize: true).}: bool
     videoOptionScheme* {.Setting: "setVideoOptionScheme", Default: Presets.Custom.}: Presets
 
 const STR: string = """
