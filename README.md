@@ -31,10 +31,10 @@ This project is currently **WIP**. Means that the usage and naming may change. A
 | Pragma | Parameter | Description |
 | - | - | - |
 | Setting | `string` | Key which is used to read and write config files. If Setting is not set, attribute is skipped. |
-| Default | `string \| SomeFloat \| enum \| bool` | The default value which is set to the object attribute, in case that the parsed line is invalid. |
+| Default | `string \| SomeInteger \| SomeFloat \| enum \| bool` | The default value which is set to the object attribute, in case that the parsed line is invalid. |
 | Format | `string` | The format how data should be serialized from and deserialized to an object (see Example -> Resolution type) |
-| Valid | `Bools(true, false: seq[string], normalize: bool = false)` | Specifiy valid bool values. If ValidBools is missing, parseBool from strutils is used. |
-| RoundW | int | Rounds data, with passed decimal places, before written. |
+| Valid | `Bools` | Specifiy valid bool values. If ValidBools is missing, parseBool from strutils is used. |
+| RoundW | `int` | Rounds data, with passed decimal places, before written. |
 | CeilW | `void` | Ceils data before written. |
 | FloorW | `void` | Floors data before written. |
 
