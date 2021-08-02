@@ -59,10 +59,17 @@ template parseBool*(attr: untyped, value: string): bool =
   result
 
 template parseObject*(attr: untyped, value: string): bool =
-  # TODO: Check if object has a format macro, when attr doesn't have it
-  var result: bool = attr.hasCustomPragma(Format)
+  var result: bool = true
+  when attr.hasCustomPragma(Format):
+    const format: string = attr.getCustomPragmaVal(Format)
+  elif type(attr).hasCustomPragma(Format):
+    const format: string = type(attr).getCustomPragmaVal(Format)
+  else:
+    # TODO: Check in validate macro
+    result = false
+    {.fatal: "TODO: Check in validate macro if".}
   if result:
-    attr = parse[type(attr)](attr.getCustomPragmaVal(Format), value)
+    attr = parse[type(attr)](format, value)
   result
 
 template parseString*(attr: untyped, value: string): bool =

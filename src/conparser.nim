@@ -10,7 +10,6 @@
 import streams
 import strutils
 import parseutils
-import math
 import macros
 import typeinfo
 import sequtils
@@ -39,8 +38,6 @@ type
     invalidLines: seq[uint] # Invalid lines for a faster lookup
     redundantSettings: Table[uint, seq[uint]] # key = first line found, value = lines which same setting found afterwards
     settingsNotFound*: seq[ConSettingNotFound] # Settings which hasn't been found
-    # validFloatRanges: Table[string, tuple[min, max: float]] # key = attr name, value = valid values
-    # validUIntRanges: Table[string, tuple[min, max: uint]] # key = attr name, value = valid values
     validIntRanges: Table[string, tuple[min, max: BiggestInt]] # key = attr name, value = valid values
     validFloatRanges: Table[string, tuple[min, max: BiggestFloat]] # key = attr name, value = valid values
     validEnums: Table[string, seq[string]] # key = attr name, value = valid values
@@ -104,6 +101,8 @@ iterator redundantLineIdxs*(report: ConReport): uint {.noSideEffect.} =
 proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
   validate(T)
 
+  result.report.valid = true
+
   var tableFound: Table[string, uint] # table of first lineIdx setting was found
 
   when T.hasCustomPragma(Prefix):
@@ -117,9 +116,9 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
         result.report.validEnums[setting] = type(val).toSeq().mapIt($it)
       elif type(val) is range:
         when type(val) is SomeInteger:
-          result.report.validIntRanges[setting] = (BiggestInt(low(val)), BiggestInt(high(val)))
+          result.report.validIntRanges[setting] = (BiggestInt(low(type(val))), BiggestInt(high(type(val))))
         elif type(val) is SomeFloat:
-          result.report.validFloatRanges[setting] = (BiggestFloat(low(val)), BiggestFloat(high(val)))
+          result.report.validFloatRanges[setting] = (BiggestFloat(low(type(val))), BiggestFloat(high(type(val))))
         else:
           {.fatal: "Range type '" & type(val) & "' not implemented.".}
       elif type(val) is SomeInteger or type(val) is SomeFloat:
@@ -130,7 +129,12 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
         else:
           result.report.validBools[setting] = Bools(`true`: @["y", "yes", "true", "1", "on"], `false`: @["n", "no", "false", "0", "off"], normalize: true)
       elif type(val) is object:
-        result.report.validFormats[setting] = result.obj.dot(key).getCustomPragmaVal(Format)
+        when result.obj.dot(key).hasCustomPragma(Format):
+          result.report.validFormats[setting] = result.obj.dot(key).getCustomPragmaVal(Format)
+        elif type(val).hasCustomPragma(Format):
+          result.report.validFormats[setting] = type(val).getCustomPragmaVal(Format)
+        # else:
+        #   {.fatal: "Format pragma missing.".}
       elif type(val) is string:
         discard # All strings are valid
       else:
@@ -153,6 +157,12 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
     if pos < lineRaw.len:
       discard lineRaw.parseUntil(line.value, Newlines, pos)
       line.value = line.value.strip(leading = false) # TODO: Pass by parameter if multiple whitespaces are allowed as delemitter
+
+    if line.setting.len == 0 and line.value.len == 0:
+      # Empty line
+      result.report.lines.add(line)
+      lineIdx.inc()
+      continue
 
     var foundSetting: bool = false
     for key, val in result.obj.fieldPairs:

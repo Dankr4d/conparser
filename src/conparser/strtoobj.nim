@@ -7,11 +7,14 @@ import parseutils
 import private/parse
 import private/serialize
 import private/dot
+import private/validate
 import pragmas
 import macros
 
 
 proc serialize*[T](t: T, format: string): string =
+  validate(T)
+
   var tokenAttribute, tokenDelimiters: string
   var pos: int = 0
 
@@ -25,6 +28,8 @@ proc serialize*[T](t: T, format: string): string =
         result &= serialize(t.dot(key))
 
 proc parse*[T](format, value: string): T =
+  validate(T)
+
   var tokenAttribute, tokenValue, tokenDelimiters: string
   var posFormat, posValue: int = 0
 
