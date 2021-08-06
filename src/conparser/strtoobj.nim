@@ -12,8 +12,8 @@ import pragmas
 import macros
 
 
-proc serialize*[T](t: T, format: string): string =
-  validate(T)
+func serialize*[T](t: T, format: string): string =
+  ## Serialize an object with passed format.
 
   var tokenAttribute, tokenDelimiters: string
   var pos: int = 0
@@ -27,9 +27,8 @@ proc serialize*[T](t: T, format: string): string =
       if key == tokenAttribute:
         result &= serialize(t.dot(key))
 
-proc parse*[T](format, value: string): T =
-  validate(T)
-
+func parse*[T](format, value: string): T =
+  ## Parses a string to an object with passed format.
   var tokenAttribute, tokenValue, tokenDelimiters: string
   var posFormat, posValue: int = 0
 

@@ -1,6 +1,7 @@
 import math
 
 template serialize*(attr: untyped): string =
+  ## Serialize object.
   var result: string
   when type(attr) is enum:
     result = $attr

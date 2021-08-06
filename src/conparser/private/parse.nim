@@ -1,9 +1,11 @@
 import strutils
 
 template parseEnum*(attr: untyped, value: string) =
+  ## Parses a string enum.
   attr = parseEnum[type(attr)](value)
 
 template parseRange*(attr: untyped, value: string): bool =
+  ## Parses a SomeFloat, SomeInteger and validate if in range.
   var result: bool = true
   when type(attr) is SomeFloat:
     let tmpValue = parseFloat(value)
@@ -20,9 +22,11 @@ template parseRange*(attr: untyped, value: string): bool =
   result
 
 template parseSomeInteger*(attr: untyped, value: string) =
+  ## Parses SomeInteger.
   attr = type(attr)(parseInt(value))
 
 template parseSomeFloat*(attr: untyped, value: string): bool =
+  ## Parses SomeFloat.
   var result: bool = true
   if not value.startsWith('.'):
     # TODO: low/high check
@@ -33,6 +37,7 @@ template parseSomeFloat*(attr: untyped, value: string): bool =
   result
 
 template parseBool*(attr: untyped, value: string): bool =
+  ## Parses a bool and validate it with Bools object, otherwise just parse the value with strutils parseBool.
   var result: bool = true
   when attr.hasCustomPragma(Valid):
     const validBools: Bools = attr.getCustomPragmaVal(Valid)
@@ -58,21 +63,16 @@ template parseBool*(attr: untyped, value: string): bool =
     attr = parseBool(value)
   result
 
-template parseObject*(attr: untyped, value: string): bool =
-  var result: bool = true
+template parseObject*(attr: untyped, value: string) =
+  ## Parses an object with required Format. The Format pragma of attribute is used, if not set, the Format pragma of the object declaration is used.
   when attr.hasCustomPragma(Format):
     const format: string = attr.getCustomPragmaVal(Format)
   elif type(attr).hasCustomPragma(Format):
     const format: string = type(attr).getCustomPragmaVal(Format)
-  else:
-    # TODO: Check in validate macro
-    result = false
-    {.fatal: "TODO: Check in validate macro if".}
-  if result:
-    attr = parse[type(attr)](format, value)
-  result
+  attr = parse[type(attr)](format, value)
 
 template parseString*(attr: untyped, value: string): bool =
+  ## "Parses" a string and validate if string isn't empty.
   var result: bool = value.len > 0
   if result:
     attr = value
@@ -80,6 +80,7 @@ template parseString*(attr: untyped, value: string): bool =
 
 
 template parseAll*(attr: untyped, value: string): bool =
+  ## Parses the a value into the attribute with all known parse functions in this file.
   var result: bool = true
   when type(attr) is enum:
     parseEnum(attr, value)
@@ -92,7 +93,7 @@ template parseAll*(attr: untyped, value: string): bool =
   elif type(attr) is bool:
     result = parseBool(attr, value)
   elif type(attr) is object:
-    result = parseObject(attr, value)
+    parseObject(attr, value)
   elif type(attr) is string:
     result = parseString(attr, value)
   else:

@@ -7,6 +7,57 @@
     * Cast intVal in ConTypeValidation to uint if kind is ntyUInt..ntyUInt64
 ]#
 
+## This module implements a key value config parser.
+## It parses and writes files from and into objects.
+## A report with lines and invalid lines is created withit you can query
+## the valid values for representing the invalid format issue. BLALBLA
+##
+## Overview
+## ========
+##
+## Parsing into an object
+## ----------------------
+## .. code-block:: Nim
+##    import conparser
+##    import streams # Or use readCon(path: string)
+##
+##    const DATA = """
+##    MyObj.Eula accepted
+##    MyObj.Resolution 800x600@60Hz
+##    MyObj.Distance 0.8
+##    MyObj.Enabled 1
+##    """
+##
+##    type
+##      AcceptedDenied* = enum
+##        Accepted = "accepted"
+##        Denied = "denied"
+##      Resolution* = object of RootObj
+##        width*: uint16
+##        height*: uint16
+##        frequence*: uint8
+##      MyObj* {.Prefix: "MyObj.".} = object
+##        eula* {.Setting: "Eula", Default: Denied.}: AcceptedDenied
+##        resolution* {.Setting: "Resolution", Format: "[width]x[height]@[frequence]Hz".}: Resolution
+##        distance* {.Setting: "Distance", Default: 1.0f32}: range[0.0f32 .. 1.0f32]
+##        enabled* {.Setting: "Enabled", Valid: Bools(`true`: @["1"], `false`: @["0"]).}: bool
+##
+##    var (obj, report) = readCon[MyObj](newStringStream(DATA))
+##    echo "=== OBJ ==="
+##    echo obj
+##    echo "=== LINES ==="
+##    for line in report.lines:
+##      echo line
+##
+##    # Output:
+##    # === OBJ ===
+##    # (eula: denied, resolution: (width: 800, height: 600, frequence: 60), distance: 1.0, enabled: true)
+##    # === LINES ===
+##    # (status: 3, setting: "MyObj.Eula", value: "accepted", raw: "MyObj.Eula accepted", lineIdx: 0, kind: akEnum)
+##    # (status: 3, setting: "MyObj.Resolution", value: "800x600@60Hz", raw: "MyObj.Resolution 800x600@60Hz", lineIdx: 1, kind: akObject)
+##    # (status: 3, setting: "MyObj.Distance", value: "0.8", raw: "MyObj.Distance 0.8", lineIdx: 2, kind: akFloat32)
+##    # (status: 3, setting: "MyObj.Enabled", value: "1", raw: "MyObj.Enabled 1", lineIdx: 3, kind: akBool)
+
 import streams
 import strutils
 import parseutils
@@ -29,40 +80,78 @@ export sequtils
 export pragmas
 
 
+const
+  NONE = (high(uint8) shl 7) shr 8 # 0
+  VALID_SETTING = (high(uint8) shl 7) shr 7 # 1
+  VALID_VALUE = (high(uint8) shl 7) shr 6 # 2
+  REDUNDANT = (high(uint8) shl 7) shr 5 # 4
 
 
 type
   ConReport* = object
-    lines*: seq[ConLine]
-    valid*: bool # true if all lines are valid, otherwise false
-    invalidLines: seq[uint] # Invalid lines for a faster lookup
-    redundantSettings: Table[uint, seq[uint]] # key = first line found, value = lines which same setting found afterwards
-    settingsNotFound*: seq[ConSettingNotFound] # Settings which hasn't been found
-    validIntRanges: Table[string, tuple[min, max: BiggestInt]] # key = attr name, value = valid values
-    validFloatRanges: Table[string, tuple[min, max: BiggestFloat]] # key = attr name, value = valid values
-    validEnums: Table[string, seq[string]] # key = attr name, value = valid values
-    validBools: Table[string, Bools] # key = attr name, value = valid values
-    validFormats: Table[string, string] # key = attr name, value = valid values
+    ## This is the report/object you get when calling ``readCon``.
+    lines*: seq[ConLine] ## Contains all lines read in.
+    valid*: bool ## true if all lines are valid, otherwise false
+    invalidLines: seq[uint] ## Contains indices of invalid lines for a faster
+                            ## lookup when calling `invalidLines` iterator.
+    redundantSettings: Table[uint, seq[uint]] ## key = first found line,
+                                              ## value = lines which same setting found afterwards
+    settingsNotFound*: seq[ConSettingNotFound] ## Settings which hasn't been found.
+    validIntRanges: Table[string, tuple[min, max: BiggestInt]] ## key = attr name, value = valid values
+    validFloatRanges: Table[string, tuple[min, max: BiggestFloat]] ## key = attr name, value = valid values
+    validEnums: Table[string, seq[string]] ## key = attr name, value = valid values
+    validBools: Table[string, Bools] ## key = attr name, value = valid values
+    validFormats: Table[string, string] ## key = attr name, value = valid values
   ConLine* = object
-    validSetting*: bool
-    validValue*: bool
-    redundant*: bool
-    setting*: string
-    value*: string
-    raw*: string
-    lineIdx*: uint # Starts at 0
-    kind*: AnyKind
+    ## Represents a line of read in config
+    status: uint8 ## Bitmask which contains VALID_SETTING, VALID_VALUE or/and REDUNDANT.
+                  ## Use helper procs: valid, validSetting, validValue or redundant
+    setting*: string ## The parsed setting
+    value*: string ## The parsed value
+    raw*: string ## The raw line
+    lineIdx*: uint ## The index of the line (starts at 0)
+    kind*: AnyKind ## The kind of the attribute (for visualisation)
   ConSettingNotFound* = object
-    setting*: string
-    kind*: AnyKind
+    ## Represents missing settings
+    setting*: string ## The setting which hasn't been found
+    kind*: AnyKind ## The kind of the attribute
+
 
 func valid*(line: ConLine): bool =
-  return line.validSetting and line.validValue and not line.redundant
+  ## Returns if the line is valid.
+  return (line.status and (VALID_SETTING or VALID_VALUE or REDUNDANT)) == (VALID_SETTING or VALID_VALUE)
+
+func validSetting*(line: ConLine): bool =
+  ## Returns if setting is valid.
+  return (line.status and VALID_SETTING) > 0
+
+func validValue*(line: ConLine): bool =
+  ## Returns if value is valid. If setting is invalid, value is also invalid.
+  return (line.status and VALID_VALUE) > 0
+
+func redundant*(line: ConLine): bool =
+  ## Returns if the setting is redundnat. First found setting doesn't have the redundant flag set.
+  return (line.status and REDUNDANT) > 0
+
 
 func validEnum*(report: ConReport, line: ConLine | ConSettingNotFound): seq[string] =
+  ## Returns valid enum values. Enums **must** have strings as values.
   return report.validEnums[line.setting]
 
 func validRange*(tdesc: typedesc, report: ConReport, line: ConLine | ConSettingNotFound): tuple[min, max: tdesc] =
+  ## Returns the valid range for this line. You need to check the line.kind attribute
+  ## to pass the correct type description.
+  runnableExamples:
+    import streams
+
+    type MyObj {.Prefix: "MyPrefix.".} = object
+      myRange {.Setting: "MySetting", Default: 50u8.} : range[0u8 .. 100u8]
+
+    var (obj, report) = readCon[MyObj](newStringStream("MyPrefix.MySetting 101"))
+    for line in report.invalidLines:
+      if line.kind == akUInt32:
+        let validRange: tuple[min, max: uint32] = validRange(uint32, report, line)
+
   when tdesc is SomeInteger:
     let validRange: tuple[min, max: BiggestInt] = report.validIntRanges[line.setting]
     result.min = tdesc(validRange.min)
@@ -73,32 +162,42 @@ func validRange*(tdesc: typedesc, report: ConReport, line: ConLine | ConSettingN
     result.max = tdesc(validRange.max)
 
 func validBools*(report: ConReport, line: ConLine | ConSettingNotFound): Bools =
+  ## Returns valid bools for this line.
   return report.validBools[line.setting]
 
 func validFormat*(report: ConReport, line: ConLine | ConSettingNotFound): string =
+  ## Returns valid format for this line.
   return report.validFormats[line.setting]
 
+
 iterator validLines*(report: ConReport): ConLine {.noSideEffect.} =
+  ## Iterator for valid lines.
   for line in report.lines:
     if line.valid:
       yield line
 
 iterator invalidLines*(report: ConReport): ConLine {.noSideEffect.} =
+  ## Iterator for invalid lines.
   for lineIdx in report.invalidLines:
     yield report.lines[lineIdx]
 
 iterator redundantLines*(report: ConReport): ConLine {.noSideEffect.} =
+  ## Iterator for redundant lines (settings). First line isn't marked
+  ## as redundant, also if value is invalid.
   for lineIdxFirst, lineIdxSeq in report.redundantSettings.pairs:
     for lineIdx in lineIdxSeq:
       yield report.lines[lineIdx]
 
 iterator redundantLineIdxs*(report: ConReport): uint {.noSideEffect.} =
+  ## Same as redundantLines except it's yielding the line index.
   for lineIdxSeq in report.redundantSettings.values:
     for lineIdx in lineIdxSeq:
       yield lineIdx
 
 
 proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
+  ## Prases the stream into an object and produces a report.
+  ## Check the report.valid flag if there are any invalid lines.
   validate(T)
 
   result.report.valid = true
@@ -146,9 +245,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
   while stream.readLine(lineRaw): # TODO: Doesn't read last empty line
 
     var line: ConLine = ConLine(
-      validSetting: true,
-      validValue: true,
-      redundant: false,
+      status: 0,
       lineIdx: lineIdx,
       raw: lineRaw
     )
@@ -164,17 +261,18 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
       lineIdx.inc()
       continue
 
-    var foundSetting: bool = false
+    # var foundSetting: bool = false
     for key, val in result.obj.fieldPairs:
       when result.obj.dot(key).hasCustomPragma(Setting):
         const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
 
         if setting == line.setting:
-          foundSetting = true
+          line.status = line.status or VALID_SETTING
 
           # Check if already found and add to duplicates of first found line
           if tableFound.hasKey(setting):
-            line.redundant = true
+            # line.redundant = true
+            line.status = line.status or REDUNDANT
             let lineIdxFirst: uint = tableFound[setting]
             if not result.report.redundantSettings.hasKey(lineIdxFirst):
               result.report.redundantSettings[lineIdxFirst]= @[lineIdx]
@@ -187,22 +285,19 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
 
           if line.value.len > 0:
             try:
-              line.validValue = parseAll(result.obj.dot(key), line.value)
+              if parseAll(result.obj.dot(key), line.value):
+                line.status = line.status or VALID_VALUE
             except ValueError:
-              line.validValue = false
-          else:
-            # Setting found, but value is empty
-            line.validValue = false
+              discard
 
-          if not line.validValue and not line.redundant:
+          # if not line.validValue and not line.redundant:
+          if bool(line.status and VALID_VALUE) and not bool(line.status and REDUNDANT):
             when result.obj.dot(key).hasCustomPragma(Default):
               result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
 
           break # Setting found, break
 
-    if not foundSetting:
-      line.validSetting = false
-    if not line.validSetting or not line.validValue or line.redundant:
+    if not line.valid:
       result.report.valid = false
       result.report.invalidLines.add(lineIdx)
     result.report.lines.add(line)
@@ -222,6 +317,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
 
 
 proc readCon*[T](path: string): tuple[obj: T, report: ConReport] =
+  ## Same as readCon above, except that it reads from a file.
   var file: File
   if not file.open(path, fmRead, -1):
     raise newException(ValueError, "FILE COULD NOT BE OPENED!") # TODO
@@ -230,6 +326,7 @@ proc readCon*[T](path: string): tuple[obj: T, report: ConReport] =
 
 
 proc writeCon*[T](t: T, path: string) =
+  ## Writes the object to a config file.
   validate(T)
 
   let fileStream: FileStream = newFileStream(path, fmWrite)
@@ -250,7 +347,7 @@ proc writeCon*[T](t: T, path: string) =
   fileStream.close()
 
 
-when isMainModule:
+when isMainModule and not defined(nimdoc):
   type
     AcceptedDenied* = enum
       Accepted = "accepted"
@@ -270,14 +367,17 @@ when isMainModule:
       name* {.Setting: "Name", Default: "Peter Pan".}: string
   var stream: StringStream = newStringStream("""
 MyObj.Eula accepted
+MyObj.Eula accepte
 MyObj.Resolution 800x600@60Hz
 MyObj.Distance 0.8
+MyObj.DistanceInvalid
 MyObj.Enabled 1
 """)
   var (obj, report) = readCon[MyObj](stream)
   echo "=== OBJ ==="
   echo obj
   echo "=== LINES ==="
-  for line in validLines(report):
-    echo line
+  # for line in validLines(report):
+  for line in report.lines:
+    echo line.validSetting,  " ", line.validValue, " ", line.redundant, line
   obj.writeCon("/home/dankrad/Desktop/write.con")

@@ -12,47 +12,88 @@ macro sym(n: typed{sym}): untyped =
     )
   )
 
+
+# template validateObject*(nAttrRecList: NimNode): untyped =
+proc validateObject*(nAttrRecList: NimNode) =
+  # echo "######################### validateObject: "
+  # echo nAttrRecList.treeRepr
+  # echo "#########################"
+  for nIdentDefs in nAttrRecList.children:
+    if nIdentDefs[1].kind != nnkSym:
+      continue # range and other
+    if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy:
+      continue # Not an object
+
+    # Search Format pragma in attribute
+    var foundFormat: bool = false
+    if nIdentDefs[0].kind == nnkPragmaExpr:
+      for nPragmaChild in nIdentDefs[0][1].children:
+        if nPragmaChild[0] == sym(Format):
+          foundFormat = true # Found pragma at Attribute
+
+    let nAttrImpl: NimNode = nIdentDefs[1].getImpl()
+
+    # Search Format pragma in object, if Format not already found.
+    if not foundFormat:
+      let nAttrImplPragma: NimNode = nAttrImpl.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+      if nAttrImplPragma != nil:
+        for nPragmaChild in nAttrImplPragma.children:
+          if nPragmaChild[0] == sym(Format):
+            foundFormat = true
+            break
+
+    if not foundFormat:
+      # Format pragma not found on attribute and object
+      error("Format pragma is missing on attribute or object declaration.", nIdentDefs[0])
+
+    # Check rekursively each type implementation of each attribute
+    validateObject(nAttrImpl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))
+
+
+
 macro validate*(tdesc: typedesc): untyped =
   let impl: NimNode = tdesc.getTypeInst()[1].getImpl()
 
   # Validate object pragmas
-  let nObjectPragma: NimNode = impl.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+  let nObjectPragma: NimNode = impl[0][1] #.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
   for nExprColonExpr in nObjectPragma.children():
     if not (nExprColonExpr[0] in [sym(Prefix), sym(Format)]):
       error(nExprColonExpr[0].strVal & " not allowed in object annotation.", nExprColonExpr[0])
 
   # Validate object attribute pragmas
-  let nAttrRecList: NimNode = impl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList)
+  let nAttrRecList: NimNode = impl[2][2] #.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList)
   for identDefs in nAttrRecList.children:
-    let nPragma: NimNode = identDefs.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+    let nAttrPragma: NimNode = identDefs[0][1] #.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
     var nAttrTypeSym: NimNode = identDefs[1]
     var nkAttrType: NimNodeKind = nAttrTypeSym.getType().kind
 
-    for nExprColonExpr in nPragma.children:
-      var nTypeInstAttr: NimNode
+    var hasFormatPragma: bool = false
+    for nExprColonExpr in nAttrPragma.children:
+      var nAttrTypeInst: NimNode
       if nAttrTypeSym.kind == nnkBracketExpr and nAttrTypeSym[0].getTypeInst() == getTypeInst(range):
-        nTypeInstAttr = nAttrTypeSym[1][1].getTypeInst()
+        nAttrTypeInst = nAttrTypeSym[1][1].getTypeInst()
       else:
-        nTypeInstAttr = nAttrTypeSym.getTypeInst()
-      let nTypeInstPragma: NimNode = nExprColonExpr[1].getTypeInst()
+        nAttrTypeInst = nAttrTypeSym.getTypeInst()
+      let nAttrPragmaTypeInst: NimNode = nExprColonExpr[1].getTypeInst()
 
       if nExprColonExpr[0] == sym(Prefix):
         # Prefix is not allowed on attributes
         error("Prefix is not allowed on attributes.", nExprColonExpr[0])
       elif nExprColonExpr[0] == sym(Format):
         # Validate if `Format` is only applied to attributes of type object
+        hasFormatPragma = true
         if nkAttrType != nnkObjectTy:
           error("Format pragma is only allowed on attributes of kind " & $nnkObjectTy & ", not of " & $nkAttrType & ".", nExprColonExpr[0])
       elif nExprColonExpr[0] == sym(Default):
         # Validate if `Default` value type is the same as type of attribute
-        if nTypeInstAttr != nTypeInstPragma:
-          error("Invalid Default value. You passed " & $nTypeInstPragma & ", but expected " & $nTypeInstAttr & ".", nExprColonExpr[1])
+        if nAttrTypeInst != nAttrPragmaTypeInst:
+          error("Invalid Default value. You passed " & $nAttrPragmaTypeInst & ", but expected " & $nAttrTypeInst & ".", nExprColonExpr[1])
 
         var isLower, isHigher: bool = false
         if nAttrTypeSym.kind == nnkBracketExpr and nAttrTypeSym[0].getTypeInst() == getTypeInst(range):
           let nMinVal: NimNode = nAttrTypeSym[1][1]
           let nMaxVal: NimNode = nAttrTypeSym[1][2]
-          case nTypeInstAttr.typeKind:
+          case nAttrTypeInst.typeKind:
           of ntyInt..ntyInt64:
             isLower = nExprColonExpr[1].intVal < nMinVal.intVal
             isHigher = nExprColonExpr[1].intVal > nMaxVal.intVal
@@ -63,15 +104,15 @@ macro validate*(tdesc: typedesc): untyped =
             isLower = nExprColonExpr[1].floatVal < nMinVal.floatVal
             isHigher = nExprColonExpr[1].floatVal > nMaxVal.floatVal
           else:
-            error("Range type " & $nTypeInstAttr & " is not implemented!", nAttrTypeSym[1])
+            error("Range type " & $nAttrTypeInst & " is not implemented!", nAttrTypeSym[1])
           if isLower:
             error("Default value is lower than specified in range.", nExprColonExpr[1])
           elif isHigher:
             error("Default value is higher than specified in range.", nExprColonExpr[1])
       elif nExprColonExpr[0] == sym(Valid):
-        if nTypeInstAttr != getTypeInst(bool):
-          error("Valid is not allowed at attribute of type " &  $nTypeInstAttr & ".", nExprColonExpr[1])
-        if nTypeInstPragma == getTypeInst(Bools):
+        if nAttrTypeInst != getTypeInst(bool):
+          error("Valid is not allowed at attribute of type " &  $nAttrTypeInst & ".", nExprColonExpr[1])
+        if nAttrPragmaTypeInst == getTypeInst(Bools):
           var foundTrue, foundFalse: bool = false
           for idx, nChild in nExprColonExpr[1].pairs:
             if idx == 0:
@@ -87,3 +128,5 @@ macro validate*(tdesc: typedesc): untyped =
               error("Empty seq at Bools constructor parameter `" & nChild[0].strVal & "`.", nChild[1][1])
           if not foundTrue or not foundFalse:
             error("Empty seq at Bools constructor parameter of `true` or `false`.", nExprColonExpr[1])
+
+  validateObject(nAttrRecList)
