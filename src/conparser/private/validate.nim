@@ -12,28 +12,28 @@ macro sym(n: typed{sym}): untyped =
     )
   )
 
+# proc validatePrefix*(nIdentDefs: NimNode) =
+#   discard
 
-# template validateObject*(nAttrRecList: NimNode): untyped =
-proc validateObject*(nAttrRecList: NimNode) =
-  # echo "######################### validateObject: "
-  # echo nAttrRecList.treeRepr
-  # echo "#########################"
-  for nIdentDefs in nAttrRecList.children:
-    if nIdentDefs[1].kind != nnkSym:
-      continue # range and other
-    if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy:
-      continue # Not an object
+proc validateObject*(nIdentDefs: NimNode) =
+    var nPragma: NimNode = nIdentDefs.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+    echo nIdentDefs.treeRepr
+    if nPragma == nil and nIdentDefs[1].getTypeImpl().kind != nnkObjectTy:
+      return
 
     # Search Format pragma in attribute
     var foundFormat: bool = false
-    if nIdentDefs[0].kind == nnkPragmaExpr:
-      for nPragmaChild in nIdentDefs[0][1].children:
-        if nPragmaChild[0] == sym(Format):
-          foundFormat = true # Found pragma at Attribute
+    for nPragmaChild in nPragma.children:
+      if nPragmaChild[0] == sym(Format):
+        foundFormat = true # Found pragma at Attribute
 
-    let nAttrImpl: NimNode = nIdentDefs[1].getImpl()
+    if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy:
+      if foundFormat:
+        error("Format pragma is only allowed on attributes of type object.", nPragma)
+      return # Not an object
 
     # Search Format pragma in object, if Format not already found.
+    let nAttrImpl: NimNode = nIdentDefs[1].getImpl()
     if not foundFormat:
       let nAttrImplPragma: NimNode = nAttrImpl.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
       if nAttrImplPragma != nil:
@@ -47,7 +47,8 @@ proc validateObject*(nAttrRecList: NimNode) =
       error("Format pragma is missing on attribute or object declaration.", nIdentDefs[0])
 
     # Check rekursively each type implementation of each attribute
-    validateObject(nAttrImpl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))
+    for nIdentDefs in nAttrImpl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList):
+      validateObject(nIdentDefs)
 
 
 
@@ -67,7 +68,6 @@ macro validate*(tdesc: typedesc): untyped =
     var nAttrTypeSym: NimNode = identDefs[1]
     var nkAttrType: NimNodeKind = nAttrTypeSym.getType().kind
 
-    var hasFormatPragma: bool = false
     for nExprColonExpr in nAttrPragma.children:
       var nAttrTypeInst: NimNode
       if nAttrTypeSym.kind == nnkBracketExpr and nAttrTypeSym[0].getTypeInst() == getTypeInst(range):
@@ -79,11 +79,6 @@ macro validate*(tdesc: typedesc): untyped =
       if nExprColonExpr[0] == sym(Prefix):
         # Prefix is not allowed on attributes
         error("Prefix is not allowed on attributes.", nExprColonExpr[0])
-      elif nExprColonExpr[0] == sym(Format):
-        # Validate if `Format` is only applied to attributes of type object
-        hasFormatPragma = true
-        if nkAttrType != nnkObjectTy:
-          error("Format pragma is only allowed on attributes of kind " & $nnkObjectTy & ", not of " & $nkAttrType & ".", nExprColonExpr[0])
       elif nExprColonExpr[0] == sym(Default):
         # Validate if `Default` value type is the same as type of attribute
         if nAttrTypeInst != nAttrPragmaTypeInst:
@@ -129,4 +124,4 @@ macro validate*(tdesc: typedesc): untyped =
           if not foundTrue or not foundFalse:
             error("Empty seq at Bools constructor parameter of `true` or `false`.", nExprColonExpr[1])
 
-  validateObject(nAttrRecList)
+    validateObject(identDefs)
