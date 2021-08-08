@@ -290,10 +290,10 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
             except ValueError:
               discard
 
-          # if not line.validValue and not line.redundant:
-          if bool(line.status and VALID_VALUE) and not bool(line.status and REDUNDANT):
+          if not line.validValue and not line.redundant:
             when result.obj.dot(key).hasCustomPragma(Default):
               result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
+              echo result.obj.dot(key)
 
           break # Setting found, break
 

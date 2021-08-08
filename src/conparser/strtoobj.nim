@@ -27,7 +27,7 @@ func serialize*[T](t: T, format: string): string =
       if key == tokenAttribute:
         result &= serialize(t.dot(key))
 
-func parse*[T](format, value: string): T =
+func parse*[T: object](t: var T, format, value: string): bool =
   ## Parses a string to an object with passed format.
   var tokenAttribute, tokenValue, tokenDelimiters: string
   var posFormat, posValue: int = 0
@@ -43,16 +43,15 @@ func parse*[T](format, value: string): T =
     posValue += value.parseUntil(tokenValue, tokenDelimiters, posValue)
     posValue += tokenDelimiters.len
 
-    var valid: bool = false
-    for key, val in result.fieldPairs:
+    for key, val in t.fieldPairs:
       if key == tokenAttribute:
         try:
-          valid = parseAll(result.dot(key), tokenValue)
+          if not parseAll(t.dot(key), tokenValue):
+            when t.dot(key).hasCustomPragma(Default):
+              t.dot(key) = t.dot(key).getCustomPragmaVal(Default)[0]
         except ValueError:
-          discard # valid already set to false
-        if not valid:
-          when result.dot(key).hasCustomPragma(Default):
-            result.dot(key) = result.dot(key).getCustomPragmaVal(Default)[0]
+          return false
+  return true
 
 
 when isMainModule:

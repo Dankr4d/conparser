@@ -63,13 +63,15 @@ template parseBool*(attr: untyped, value: string): bool =
     attr = parseBool(value)
   result
 
-template parseObject*(attr: untyped, value: string) =
+template parseObject*(attr: untyped, value: string): bool =
   ## Parses an object with required Format. The Format pragma of attribute is used, if not set, the Format pragma of the object declaration is used.
+  var result: bool = true
   when attr.hasCustomPragma(Format):
     const format: string = attr.getCustomPragmaVal(Format)
   elif type(attr).hasCustomPragma(Format):
     const format: string = type(attr).getCustomPragmaVal(Format)
-  attr = parse[type(attr)](format, value)
+  result = parse(attr, format, value)
+  result
 
 template parseString*(attr: untyped, value: string): bool =
   ## "Parses" a string and validate if string isn't empty.
@@ -93,7 +95,7 @@ template parseAll*(attr: untyped, value: string): bool =
   elif type(attr) is bool:
     result = parseBool(attr, value)
   elif type(attr) is object:
-    parseObject(attr, value)
+    result = parseObject(attr, value)
   elif type(attr) is string:
     result = parseString(attr, value)
   else:
