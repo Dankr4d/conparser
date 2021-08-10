@@ -1,5 +1,5 @@
 # Package
-version       = "0.1.4"
+version       = "0.1.5"
 author        = "Dankr4d"
 description   = "Key value config parser. Mainly written for Battlefield 2/2142 configs."
 license       = "MIT"

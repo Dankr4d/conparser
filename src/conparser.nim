@@ -346,6 +346,10 @@ proc writeCon*[T](t: T, path: string) =
 
   fileStream.close()
 
+func newDefault*[T: object](): T =
+  for key, val in result.fieldPairs:
+    when result.dot(key).hasCustomPragma(Default):
+      result.dot(key) = result.dot(key).getCustomPragmaVal(Default)[0]
 
 when isMainModule and not defined(nimdoc):
   type

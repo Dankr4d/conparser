@@ -25,7 +25,7 @@ template serialize*(attr: untyped): string =
       else:
         result = validBools.`false`[0]
     else:
-      $attr
+      result = $attr
   elif type(attr) is object:
     result = attr.serialize(attr.getCustomPragmaVal(Format))
   elif type(attr) is string:
