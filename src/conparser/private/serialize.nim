@@ -1,4 +1,5 @@
 import math
+import ../pragmas
 
 template serialize*(attr: untyped): string =
   ## Serialize object.

@@ -5,6 +5,9 @@ proc validValuesMarkup(report: ConReport, line: ConLine | ConSettingNotFound, ma
   case line.kind:
   of akEnum:
     result &= "[" & markupEscapeProc(report.validEnum(line).join(", ")) & "]"
+  of akInt..akInt64, akUInt..akUInt64:
+    let validRange: tuple[min, max: BiggestInt] = validRange(BiggestInt, report, line)
+    result &= "[" & $validRange.min & " .. " & $validRange.max & "]"
   of akFloat..akFloat128:
     let validRange: tuple[min, max: BiggestFloat] = validRange(BiggestFloat, report, line)
     result &= "[" & $validRange.min & " .. " & $validRange.max & "]"

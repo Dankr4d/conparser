@@ -139,9 +139,14 @@ macro validate*(tdesc: typedesc): untyped =
 
   # Validate object pragmas
   let nObjectPragma: NimNode = impl[0][1] #.findChild(it.kind == nnkPragmaExpr).findChild(it.kind == nnkPragma)
+  var nSym: NimNode
   for nExprColonExpr in nObjectPragma.children():
-    if not (nExprColonExpr[0] in [sym(Prefix), sym(Format)]):
-      error(nExprColonExpr[0].strVal & " not allowed in object annotation.", nExprColonExpr[0])
+    if nExprColonExpr.kind == nnkSym:
+      nSym = nExprColonExpr
+    else:
+      nSym = nExprColonExpr[0]
+    if not (nSym in [sym(Prefix), sym(Format)]):
+      error(nSym.strVal & " not allowed in object annotation.", nSym)
 
   # Validate object attribute pragmas
   validateAttributes(impl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))

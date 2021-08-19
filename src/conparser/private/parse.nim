@@ -1,4 +1,5 @@
 import strutils
+import ../pragmas
 
 template parseEnum*(attr: untyped, value: string) =
   ## Parses a string enum.

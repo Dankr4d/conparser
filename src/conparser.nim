@@ -116,11 +116,6 @@ type
     setting*: string ## The setting which hasn't been found
     kind*: AnyKind ## The kind of the attribute
 
-
-func valid*(line: ConLine): bool =
-  ## Returns if the line is valid.
-  return (line.status and (VALID_SETTING or VALID_VALUE or REDUNDANT)) == (VALID_SETTING or VALID_VALUE)
-
 func validSetting*(line: ConLine): bool =
   ## Returns if setting is valid.
   return (line.status and VALID_SETTING) > 0
@@ -133,6 +128,10 @@ func redundant*(line: ConLine): bool =
   ## Returns if the setting is redundnat. First found setting doesn't have the redundant flag set.
   return (line.status and REDUNDANT) > 0
 
+func valid*(line: ConLine): bool =
+  ## Returns if the line is valid.
+  return (line.validSetting and line.validValue and not line.redundant)
+  # return (line.status and (VALID_SETTING or VALID_VALUE or REDUNDANT)) == (VALID_SETTING or VALID_VALUE)
 
 func validEnum*(report: ConReport, line: ConLine | ConSettingNotFound): seq[string] =
   ## Returns valid enum values. Enums **must** have strings as values.
@@ -194,7 +193,6 @@ iterator redundantLineIdxs*(report: ConReport): uint {.noSideEffect.} =
     for lineIdx in lineIdxSeq:
       yield lineIdx
 
-
 proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
   ## Prases the stream into an object and produces a report.
   ## Check the report.valid flag if there are any invalid lines.
@@ -210,7 +208,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
     const prefix: string = ""
   for key, val in result.obj.fieldPairs:
     when result.obj.dot(key).hasCustomPragma(Setting):
-      const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
+      const setting {.used.}: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
       when type(val) is enum:
         result.report.validEnums[setting] = type(val).toSeq().mapIt($it)
       elif type(val) is range:
@@ -308,6 +306,8 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
     when result.obj.dot(key).hasCustomPragma(Setting):
       const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
       if not tableFound.hasKey(setting):
+        result.report.valid = false
+
         when result.obj.dot(key).hasCustomPragma(Default):
           result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
         result.report.settingsNotFound.add(ConSettingNotFound(
@@ -322,7 +322,8 @@ proc readCon*[T](path: string): tuple[obj: T, report: ConReport] =
   if not file.open(path, fmRead, -1):
     raise newException(ValueError, "FILE COULD NOT BE OPENED!") # TODO
   let stream: FileStream = newFileStream(file)
-  return readCon[T](stream)
+  result = readCon[T](stream)
+  stream.close()
 
 
 proc writeCon*[T](t: T, path: string) =
