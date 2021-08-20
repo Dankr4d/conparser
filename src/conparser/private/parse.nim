@@ -64,13 +64,16 @@ template parseBool*(attr: untyped, value: string): bool =
     attr = parseBool(value)
   result
 
-template parseObject*(attr: untyped, value: string): bool =
+template parseObject*(attr: untyped, value: string, fmt: string = ""): bool =
   ## Parses an object with required Format. The Format pragma of attribute is used, if not set, the Format pragma of the object declaration is used.
   var result: bool = true
-  when attr.hasCustomPragma(Format):
-    const format: string = attr.getCustomPragmaVal(Format)
-  elif type(attr).hasCustomPragma(Format):
-    const format: string = type(attr).getCustomPragmaVal(Format)
+  when fmt.len > 0:
+    const format: string = fmt
+  else:
+    when attr.hasCustomPragma(Format):
+      const format: string = attr.getCustomPragmaVal(Format)
+    elif type(attr).hasCustomPragma(Format):
+      const format: string = type(attr).getCustomPragmaVal(Format)
   result = parse(attr, format, value)
   result
 
@@ -81,6 +84,21 @@ template parseString*(attr: untyped, value: string): bool =
     attr = value
   result
 
+template parseSeq*(attr: untyped, value: string): bool =
+  ## "Parses" a sequence.
+  var result: bool = true
+  var item: auto = type(attr[0])()
+  when type(item) is object:
+    when attr.hasCustomPragma(Format):
+      const format: string = attr.getCustomPragmaVal(Format)
+    else:
+      const format: string = ""
+
+    result = parseObject(item, value, format)
+    attr.add(item)
+  else:
+    parseAll(item, value)
+  result
 
 template parseAll*(attr: untyped, value: string): bool =
   ## Parses the a value into the attribute with all known parse functions in this file.
@@ -99,6 +117,8 @@ template parseAll*(attr: untyped, value: string): bool =
     result = parseObject(attr, value)
   elif type(attr) is string:
     result = parseString(attr, value)
+  elif type(attr) is seq:
+    result = parseSeq(attr, value)
   else:
-    {.fatal: "Attribute type '" & type(attr) & "' not implemented.".}
+    {.fatal: "Attribute type '" & $type(attr) & "' not implemented.".}
   result

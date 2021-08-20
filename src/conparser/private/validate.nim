@@ -30,10 +30,16 @@ proc validateObject(nIdentDefs, nPragma: NimNode) =
     if nPragmaChild[0] == sym(Format):
       foundFormat = true # Found pragma at Attribute
 
-  if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy:
+  if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy and nIdentDefs[1].getTypeImpl().typeKind != ntySequence:
     if foundFormat:
       error("Format pragma is only allowed on attributes of type object.", nPragma)
     return # Not an object
+
+  if nIdentDefs[1].kind == nnkBracketExpr:
+    # BracketExpr
+    #   Sym "seq"
+    #   Sym "Kit"
+    return
 
   # Search Format pragma in object, if Format not already found.
   let nAttrImpl: NimNode = nIdentDefs[1].getImpl()
@@ -62,6 +68,17 @@ proc validateDefault(nIdentDefs, nPragma: NimNode) =
       nTypeInst = nIdentDefs[1][1][1].getTypeInst()
     else:
       nTypeInst = nIdentDefs[1].getTypeInst()
+
+    # if nPragmaChild[1].kind == nnkPrefix and nPragmaChild[1][0].kind == nnkSym and nPragmaChild[1][0].strVal == "@":
+    #   # echo "nTypeInst: ", nTypeInst.treeRepr
+    #   # echo "nTypeInst == seq: ", nIdentDefs[1][1].getTypeInst() == getTypeInst(seq)
+    #   if nPragmaChild[1][1].kind == nnkBracket and nPragmaChild[1][1][0].kind == nnkObjConstr:
+    #     if nPragmaChild[1][1][0][0] != nTypeInst[1]:
+    #       echo "INVALID VAL"
+    #       error("Invalid Default value. You passed") # " & $nPragmaDefaultTypeInst & ", but expected " & $nTypeInst & ".", nPragmaChild[1])
+    #       return
+    #     return
+
     let nPragmaDefaultTypeInst: NimNode = nPragmaChild[1].getTypeInst()
     if nTypeInst != nPragmaDefaultTypeInst:
       error("Invalid Default value. You passed " & $nPragmaDefaultTypeInst & ", but expected " & $nTypeInst & ".", nPragmaChild[1])
@@ -150,3 +167,23 @@ macro validate*(tdesc: typedesc): untyped =
 
   # Validate object attribute pragmas
   validateAttributes(impl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))
+
+when isMainModule:
+  import conparser
+
+  type
+    Armor* = object of RootObj
+      team*: range[0u8 .. 1u8]
+      kit*: range[0u8 .. 3u8]
+      val* {.Valid: Bools(`true`: @["1"], `false`: @["0"]), Default: false.}: bool
+    Profile* {.Prefix: "LocalProfile.".} = object
+      armors* {.Setting: "setCurrentProfileHeavyArmor", Format: "[team] [kit] [val]", Default: @[Armor(team: 0, kit: 0, val: false), Armor(team: 0, kit: 1, val: false), Armor(team: 0, kit: 2, val: false), Armor(team: 0, kit: 3, val: false), Armor(team: 1, kit: 0, val: false), Armor(team: 1, kit: 1, val: false), Armor(team: 1, kit: 2, val: false), Armor(team: 1, kit: 3, val: false)].}: seq[Armor]
+
+  let path: string = """/home/dankrad/Battlefield 2142/Profiles/0001/Profile.con"""
+  var profile: Profile
+  var report: ConReport
+  (profile, report) = readCon[Profile](path)
+  # for line in report.lines:
+  #   echo line
+  echo profile
+

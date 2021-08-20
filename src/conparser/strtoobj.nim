@@ -12,11 +12,16 @@ import pragmas
 import macros
 
 
-func serialize*[T](t: T, format: string): string =
+proc serialize*[T](t: T, format: string): string =
   ## Serialize an object with passed format.
 
   var tokenAttribute, tokenDelimiters: string
   var pos: int = 0
+
+  when T.hasCustomPragma(Prefix):
+    const prefix: string = T.getCustomPragmaVal(Prefix)
+  else:
+    const prefix: string = ""
 
   while pos < format.len:
     pos += format.parseUntil(tokenDelimiters, '[', pos) + 1
@@ -25,7 +30,7 @@ func serialize*[T](t: T, format: string): string =
     result &= tokenDelimiters
     for key, val in t.fieldPairs:
       if key == tokenAttribute:
-        result &= serialize(t.dot(key))
+        result &= serializeAll(t.dot(key), prefix)
 
 func parse*[T: object](t: var T, format, value: string): bool =
   ## Parses a string to an object with passed format.

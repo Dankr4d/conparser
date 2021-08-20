@@ -234,8 +234,10 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
         #   {.fatal: "Format pragma missing.".}
       elif type(val) is string:
         discard # All strings are valid
+      elif type(val) is seq:
+        discard # TODO
       else:
-        {.fatal: "Attribute type '" & type(val) & "' not implemented.".}
+        {.fatal: "Attribute type '" & $type(val) & "' not implemented.".}
 
   var lineRaw: string
   var lineIdx: uint = 0
@@ -341,9 +343,7 @@ proc writeCon*[T](t: T, path: string) =
 
   for key, val in t.fieldPairs:
     when t.dot(key).hasCustomPragma(Setting):
-      const setting: string = prefix & t.dot(key).getCustomPragmaVal(Setting)
-
-      fileStream.writeLine(setting & " " & serialize(t.dot(key)))
+      fileStream.writeLine(serializeAll(t.dot(key), prefix))
 
   fileStream.close()
 
