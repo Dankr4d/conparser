@@ -69,15 +69,21 @@ proc validateDefault(nIdentDefs, nPragma: NimNode) =
     else:
       nTypeInst = nIdentDefs[1].getTypeInst()
 
-    # if nPragmaChild[1].kind == nnkPrefix and nPragmaChild[1][0].kind == nnkSym and nPragmaChild[1][0].strVal == "@":
-    #   # echo "nTypeInst: ", nTypeInst.treeRepr
-    #   # echo "nTypeInst == seq: ", nIdentDefs[1][1].getTypeInst() == getTypeInst(seq)
-    #   if nPragmaChild[1][1].kind == nnkBracket and nPragmaChild[1][1][0].kind == nnkObjConstr:
-    #     if nPragmaChild[1][1][0][0] != nTypeInst[1]:
-    #       echo "INVALID VAL"
-    #       error("Invalid Default value. You passed") # " & $nPragmaDefaultTypeInst & ", but expected " & $nTypeInst & ".", nPragmaChild[1])
-    #       return
-    #     return
+    if nPragmaChild[1].kind == nnkPrefix and nPragmaChild[1][0].kind == nnkSym and nPragmaChild[1][0].strVal == "@":
+      if nPragmaChild[1][1].kind == nnkBracket and nPragmaChild[1][1][0].kind == nnkObjConstr:
+        if nPragmaChild[1][1][0][0] != nTypeInst[1]:
+          error("Invalid Default value. You passed") # " & $nPragmaDefaultTypeInst & ", but expected " & $nTypeInst & ".", nPragmaChild[1])
+          return
+        return
+
+    if nPragmaChild[1].kind == nnkCall:
+      let nPragmaChildTypeImpl: NimNode = nPragmaChild[1].getTypeImpl()
+      if nPragmaChildTypeImpl.kind == nnkBracketExpr:
+        if nPragmaChildTypeImpl[1] != nTypeInst[1]:
+          error("Invalid Default value. You passed") # " & $nPragmaDefaultTypeInst & ", but expected " & $nTypeInst & ".", nPragmaChild[1])
+          return
+        return
+
 
     let nPragmaDefaultTypeInst: NimNode = nPragmaChild[1].getTypeInst()
     if nTypeInst != nPragmaDefaultTypeInst:
@@ -176,8 +182,20 @@ when isMainModule:
       team*: range[0u8 .. 1u8]
       kit*: range[0u8 .. 3u8]
       val* {.Valid: Bools(`true`: @["1"], `false`: @["0"]), Default: false.}: bool
+
+  func getDefaultArmors(): seq[Armor] =
+    for team in 0u8..1u8:
+      for kit in 0u8..3u8:
+        result.add(Armor(team: team, kit: kit, val: false))
+
+  func getDefaultStr(): string =
+    return "My default string."
+
+  type
     Profile* {.Prefix: "LocalProfile.".} = object
-      armors* {.Setting: "setCurrentProfileHeavyArmor", Format: "[team] [kit] [val]", Default: @[Armor(team: 0, kit: 0, val: false), Armor(team: 0, kit: 1, val: false), Armor(team: 0, kit: 2, val: false), Armor(team: 0, kit: 3, val: false), Armor(team: 1, kit: 0, val: false), Armor(team: 1, kit: 1, val: false), Armor(team: 1, kit: 2, val: false), Armor(team: 1, kit: 3, val: false)].}: seq[Armor]
+      # armors* {.Setting: "setCurrentProfileHeavyArmor", Format: "[team] [kit] [val]", Default: @[Armor(team: 0, kit: 0, val: false), Armor(team: 0, kit: 1, val: false), Armor(team: 0, kit: 2, val: false), Armor(team: 0, kit: 3, val: false), Armor(team: 1, kit: 0, val: false), Armor(team: 1, kit: 1, val: false), Armor(team: 1, kit: 2, val: false), Armor(team: 1, kit: 3, val: false)].}: seq[Armor]
+      armors* {.Setting: "setCurrentProfileHeavyArmor", Format: "[team] [kit] [val]", Default: getDefaultArmors().}: seq[Armor]
+      str* {.Setting: "str", Default: getDefaultStr().}: string
 
   let path: string = """/home/dankrad/Battlefield 2142/Profiles/0001/Profile.con"""
   var profile: Profile
