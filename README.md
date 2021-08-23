@@ -14,7 +14,7 @@ This project is currently **WIP**. Means that the usage and naming may change. A
 - [x] `string`
 - [ ] `Option`
 - [ ] `tuple`
-- [ ] `seq`
+- [x] `seq`
 - [ ] `set`
 - [ ] `byte`
 - [ ] `array`
@@ -37,6 +37,8 @@ This project is currently **WIP**. Means that the usage and naming may change. A
 | RoundW | `int` | Rounds data, with passed decimal places, before written. |
 | CeilW | `void` | Ceils data before written. |
 | FloorW | `void` | Floors data before written. |
+| BlockStart | `string` | Line prefix when to start reading a block. |
+| BlockValue | `string` | Value which must match to read block into object. |
 
 ## Example
 ```nim

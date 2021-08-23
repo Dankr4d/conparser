@@ -6,13 +6,12 @@
 import parseutils
 import private/parse
 import private/serialize
-import private/dot
 import private/validate
 import pragmas
 import macros
 
 
-proc serialize*[T](t: T, format: string): string =
+func serialize*[T](t: T, format: string): string =
   ## Serialize an object with passed format.
 
   var tokenAttribute, tokenDelimiters: string
@@ -30,7 +29,7 @@ proc serialize*[T](t: T, format: string): string =
     result &= tokenDelimiters
     for key, val in t.fieldPairs:
       if key == tokenAttribute:
-        result &= serializeAll(t.dot(key), prefix)
+        result &= serializeAll(val, prefix)
 
 func parse*[T: object](t: var T, format, value: string): bool =
   ## Parses a string to an object with passed format.
@@ -51,9 +50,9 @@ func parse*[T: object](t: var T, format, value: string): bool =
     for key, val in t.fieldPairs:
       if key == tokenAttribute:
         try:
-          if not parseAll(t.dot(key), tokenValue):
-            when t.dot(key).hasCustomPragma(Default):
-              t.dot(key) = t.dot(key).getCustomPragmaVal(Default)[0]
+          if not parseAll(val, tokenValue):
+            when val.hasCustomPragma(Default):
+              val = val.getCustomPragmaVal(Default)[0]
         except ValueError:
           return false
   return true
@@ -69,6 +68,7 @@ when isMainModule:
   let format: string = "[width]x[height]@[frequence]Hz"
   let value: string = "800x600@60Hz"
 
-  var res: Resolution = parse[Resolution](format, value)
+  var res: Resolution
+  echo "parse: ", res.parse(format, value)
   echo res
   echo res.serialize(format)

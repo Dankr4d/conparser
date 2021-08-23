@@ -26,13 +26,22 @@ proc validateObject(nIdentDefs, nPragma: NimNode) =
 
   # Search Format pragma in attribute
   var foundFormat: bool = false
+  var foundBlock: bool = false
   for nPragmaChild in nPragma.children:
     if nPragmaChild[0] == sym(Format):
       foundFormat = true # Found pragma at Attribute
+    elif nPragmaChild[0] == sym(BlockValue):
+      foundBlock = true
+
+  if foundFormat and foundBlock:
+    error("Only " & sym(Format).strVal & " OR " & sym(BlockValue).strVal & " pragma is allowed on attributes of type object.", nPragma)
 
   if nIdentDefs[1].getTypeImpl().kind != nnkObjectTy and nIdentDefs[1].getTypeImpl().typeKind != ntySequence:
+    const errorMsg: string = " pragma is only allowed on attributes of type object."
     if foundFormat:
-      error("Format pragma is only allowed on attributes of type object.", nPragma)
+      error(sym(Format).strVal & errorMsg, nPragma)
+    elif foundBlock:
+      error(sym(BlockValue).strVal & errorMsg, nPragma)
     return # Not an object
 
   if nIdentDefs[1].kind == nnkBracketExpr:
@@ -51,7 +60,7 @@ proc validateObject(nIdentDefs, nPragma: NimNode) =
           foundFormat = true
           break
 
-  if not foundFormat:
+  if not foundFormat and not foundBlock:
     # Format pragma not found on attribute and object
     error("Format pragma is missing on attribute or object declaration.", nIdentDefs[0])
 
@@ -168,7 +177,7 @@ macro validate*(tdesc: typedesc): untyped =
       nSym = nExprColonExpr
     else:
       nSym = nExprColonExpr[0]
-    if not (nSym in [sym(Prefix), sym(Format)]):
+    if not (nSym in [sym(Prefix), sym(Format), sym(BlockStart)]):
       error(nSym.strVal & " not allowed in object annotation.", nSym)
 
   # Validate object attribute pragmas

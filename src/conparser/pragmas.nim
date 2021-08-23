@@ -12,3 +12,5 @@ template Valid*(val: Bools) {.pragma.} ## Specify which values are valid. Curren
 template RoundW*(places: int) {.pragma.} ## Round SomeFloat when writing/serializing.
 template CeilW*() {.pragma.} ## Ceil SomeFloat when writing/serializing.
 template FloorW*() {.pragma.} ## Floor SomeFloat when writing/serializing.
+template BlockStart*(val: string) {.pragma.}
+template BlockValue*(val: string) {.pragma.}

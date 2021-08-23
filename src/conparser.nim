@@ -69,7 +69,6 @@ import tables
 import conparser/private/validate
 import conparser/private/parse
 import conparser/private/serialize
-import conparser/private/dot
 import conparser/pragmas
 import conparser/strtoobj
 
@@ -193,6 +192,40 @@ iterator redundantLineIdxs*(report: ConReport): uint {.noSideEffect.} =
     for lineIdx in lineIdxSeq:
       yield lineIdx
 
+template checkAndParse*[T](obj: T) =
+  for key, val in obj.fieldPairs:
+    when val.hasCustomPragma(Setting):
+      const setting: string = pre & val.getCustomPragmaVal(Setting)
+
+      if setting == line.setting:
+        line.status = line.status or VALID_SETTING
+
+        # Check if already found and add to duplicates of first found line
+        if tableFound.hasKey($type(obj) & setting) and not obj.hasCustomPragma(BlockValue):
+          line.status = line.status or REDUNDANT
+          let lineIdxFirst: uint = tableFound[$type(obj) & setting]
+          if not result.report.redundantSettings.hasKey(lineIdxFirst):
+            result.report.redundantSettings[lineIdxFirst]= @[lineIdx]
+          else:
+            result.report.redundantSettings[lineIdxFirst].add(lineIdx)
+        else:
+          tableFound[$type(obj) & setting] = lineIdx
+
+        line.kind = toAny(val).kind
+
+        if line.value.len > 0:
+          try:
+            if parseAll(val, line.value):
+              line.status = line.status or VALID_VALUE
+          except ValueError:
+            discard
+
+        if not line.validValue and not line.redundant:
+          when val.hasCustomPragma(Default):
+            val = val.getCustomPragmaVal(Default)[0]
+
+        break # Setting found, break
+
 proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
   ## Prases the stream into an object and produces a report.
   ## Check the report.valid flag if there are any invalid lines.
@@ -203,12 +236,12 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
   var tableFound: Table[string, uint] # table of first lineIdx setting was found
 
   when T.hasCustomPragma(Prefix):
-    const prefix: string = T.getCustomPragmaVal(Prefix)
+    const pre: string = T.getCustomPragmaVal(Prefix)
   else:
-    const prefix: string = ""
+    const pre: string = ""
   for key, val in result.obj.fieldPairs:
-    when result.obj.dot(key).hasCustomPragma(Setting):
-      const setting {.used.}: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
+    when val.hasCustomPragma(Setting):
+      const setting {.used.}: string = pre & val.getCustomPragmaVal(Setting)
       when type(val) is enum:
         result.report.validEnums[setting] = type(val).toSeq().mapIt($it)
       elif type(val) is range:
@@ -221,13 +254,13 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
       elif type(val) is SomeInteger or type(val) is SomeFloat:
         discard # All numbers are valid
       elif type(val) is bool:
-        when result.obj.dot(key).hasCustomPragma(Valid):
-          result.report.validBools[setting] = result.obj.dot(key).getCustomPragmaVal(Valid)
+        when val.hasCustomPragma(Valid):
+          result.report.validBools[setting] = val.getCustomPragmaVal(Valid)
         else:
           result.report.validBools[setting] = Bools(`true`: @["y", "yes", "true", "1", "on"], `false`: @["n", "no", "false", "0", "off"], normalize: true)
       elif type(val) is object:
-        when result.obj.dot(key).hasCustomPragma(Format):
-          result.report.validFormats[setting] = result.obj.dot(key).getCustomPragmaVal(Format)
+        when val.hasCustomPragma(Format):
+          result.report.validFormats[setting] = val.getCustomPragmaVal(Format)
         elif type(val).hasCustomPragma(Format):
           result.report.validFormats[setting] = type(val).getCustomPragmaVal(Format)
         # else:
@@ -241,6 +274,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
 
   var lineRaw: string
   var lineIdx: uint = 0
+  var curAttrObjName: string
 
   while stream.readLine(lineRaw): # TODO: Doesn't read last empty line
 
@@ -261,41 +295,25 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
       lineIdx.inc()
       continue
 
-    # var foundSetting: bool = false
-    for key, val in result.obj.fieldPairs:
-      when result.obj.dot(key).hasCustomPragma(Setting):
-        const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
-
-        if setting == line.setting:
-          line.status = line.status or VALID_SETTING
-
-          # Check if already found and add to duplicates of first found line
-          if tableFound.hasKey(setting):
-            # line.redundant = true
-            line.status = line.status or REDUNDANT
-            let lineIdxFirst: uint = tableFound[setting]
-            if not result.report.redundantSettings.hasKey(lineIdxFirst):
-              result.report.redundantSettings[lineIdxFirst]= @[lineIdx]
+    when T.hasCustomPragma(BlockStart):
+      const blockStart: string = T.getCustomPragmaVal(BlockStart)
+      for key, val in result.obj.fieldPairs:
+        when val.hasCustomPragma(BlockValue):
+          const blockValue: string = val.getCustomPragmaVal(BlockValue)
+          if line.setting == blockStart:
+            if line.value == blockValue:
+              line.status = line.status or VALID_SETTING or VALID_VALUE
+              curAttrObjName = key
             else:
-              result.report.redundantSettings[lineIdxFirst].add(lineIdx)
-          else:
-            tableFound[setting] = lineIdx
-
-          line.kind = toAny(result.obj.dot(key)).kind
-
-          if line.value.len > 0:
-            try:
-              if parseAll(result.obj.dot(key), line.value):
-                line.status = line.status or VALID_VALUE
-            except ValueError:
-              discard
-
-          if not line.validValue and not line.redundant:
-            when result.obj.dot(key).hasCustomPragma(Default):
-              result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
-              echo result.obj.dot(key)
-
-          break # Setting found, break
+              curAttrObjName = ""
+          if key == curAttrObjName:
+            checkAndParse(val)
+            break
+    else:
+      # checkAndParse(result.obj) # TODO: Crashes (iterates over result too)
+      var obj: T = result.obj
+      checkAndParse(obj)
+      result.obj = obj
 
     if not line.valid:
       result.report.valid = false
@@ -304,18 +322,33 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
     lineIdx.inc()
 
   # Check for missing settings and add them to report
-  for key, val in result.obj.fieldPairs:
-    when result.obj.dot(key).hasCustomPragma(Setting):
-      const setting: string = prefix & result.obj.dot(key).getCustomPragmaVal(Setting)
-      if not tableFound.hasKey(setting):
-        result.report.valid = false
+  when T.hasCustomPragma(BlockStart):
+    for key, val in result.obj.fieldPairs:
+      for key2, val2 in val.fieldPairs:
+        when val2.hasCustomPragma(Setting):
+          const setting: string = T.getCustomPragmaVal(Prefix) & val2.getCustomPragmaVal(Setting)
+          if not tableFound.hasKey($type(val) & setting):
+            result.report.valid = false
 
-        when result.obj.dot(key).hasCustomPragma(Default):
-          result.obj.dot(key) = result.obj.dot(key).getCustomPragmaVal(Default)[0]
-        result.report.settingsNotFound.add(ConSettingNotFound(
-          setting: setting,
-          kind: toAny(result.obj.dot(key)).kind
-        ))
+            when val2.hasCustomPragma(Default):
+              val2 = val2.getCustomPragmaVal(Default)[0]
+            result.report.settingsNotFound.add(ConSettingNotFound(
+              setting: setting,
+              kind: toAny(val2).kind
+            ))
+  else:
+    for key, val in result.obj.fieldPairs:
+      when val.hasCustomPragma(Setting):
+        const setting: string = pre & val.getCustomPragmaVal(Setting)
+        if not tableFound.hasKey($type(result.obj) & setting):
+          result.report.valid = false
+
+          when val.hasCustomPragma(Default):
+            val = val.getCustomPragmaVal(Default)[0]
+          result.report.settingsNotFound.add(ConSettingNotFound(
+            setting: setting,
+            kind: toAny(val).kind
+          ))
 
 
 proc readCon*[T](path: string): tuple[obj: T, report: ConReport] =
@@ -341,16 +374,29 @@ proc writeCon*[T](t: T, path: string) =
   else:
     const prefix: string = ""
 
-  for key, val in t.fieldPairs:
-    when t.dot(key).hasCustomPragma(Setting):
-      fileStream.writeLine(serializeAll(t.dot(key), prefix))
+  when T.hasCustomPragma(BlockStart):
+    for key, val in t.fieldPairs:
+      when val.hasCustomPragma(BlockValue):
+        fileStream.writeLine(T.getCustomPragmaVal(BlockStart) & " " & val.getCustomPragmaVal(BlockValue))
+
+        for key2, val2 in val.fieldPairs:
+          when val2.hasCustomPragma(Setting):
+            # fileStream.writeLine(serializeAll(val2, prefix))
+            var str: string = serializeAll(val2, prefix)
+            if str.len > 0: # TODO: Check in which case there could be empty lines
+              fileStream.writeLine(str)
+        fileStream.writeLine()
+  else:
+    for key, val in t.fieldPairs:
+      when val.hasCustomPragma(Setting):
+        fileStream.writeLine(serializeAll(val, prefix))
 
   fileStream.close()
 
 func newDefault*[T: object](): T =
   for key, val in result.fieldPairs:
-    when result.dot(key).hasCustomPragma(Default):
-      result.dot(key) = result.dot(key).getCustomPragmaVal(Default)[0]
+    when val.hasCustomPragma(Default):
+      val = val.getCustomPragmaVal(Default)[0]
 
 when isMainModule and not defined(nimdoc):
   type

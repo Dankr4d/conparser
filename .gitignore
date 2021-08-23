@@ -4,9 +4,6 @@ src/conparser.exe
 src/conparser/strtoobj
 src/conparser/strtoobj.exe
 
-src/conparser/private/dot
-src/conparser/private/dot.exe
-
 src/conparser/private/parse
 src/conparser/private/parse.exe
 
@@ -22,3 +19,6 @@ src/conparser/exports/markup.exe
 
 examples/markup
 examples/markup.exe
+
+
+docs/
