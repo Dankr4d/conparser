@@ -77,6 +77,7 @@ export typeinfo
 export strtoobj
 export sequtils
 export pragmas
+export validate
 
 
 const
@@ -381,15 +382,32 @@ proc writeCon*[T](t: T, path: string) =
 
         for key2, val2 in val.fieldPairs:
           when val2.hasCustomPragma(Setting):
-            # fileStream.writeLine(serializeAll(val2, prefix))
-            var str: string = serializeAll(val2, prefix)
-            if str.len > 0: # TODO: Check in which case there could be empty lines
+            var str: string
+            when val2.hasCustomPragma(Default) and val2.hasCustomPragma(IgnoreWhenDefault):
+              if val2 == val2.getCustomPragmaVal(Default)[0]:
+                str = "" # Ignore writing val because IgnoreWhenDefault is set
+              else:
+                str = serializeAll(val2, prefix)
+            else:
+              str = serializeAll(val2, prefix)
+            # Empty sequence: str.len == 0
+            if str.len > 0:
               fileStream.writeLine(str)
         fileStream.writeLine()
   else:
     for key, val in t.fieldPairs:
       when val.hasCustomPragma(Setting):
-        fileStream.writeLine(serializeAll(val, prefix))
+        var str: string
+        when val.hasCustomPragma(Default) and val.hasCustomPragma(IgnoreWhenDefault):
+          if val == val.getCustomPragmaVal(Default)[0]:
+            str = "" # Ignore writing val because IgnoreWhenDefault is set
+          else:
+            str = serializeAll(val, prefix)
+        else:
+          str = serializeAll(val, prefix)
+        # Empty sequence: str.len == 0
+        if str.len > 0:
+          fileStream.writeLine(str)
 
   fileStream.close()
 
@@ -413,7 +431,7 @@ when isMainModule and not defined(nimdoc):
       distanceRange* {.Setting: "Distance", Default: 1.0f32}: range[0.0f32 .. 1.0f32]
       distanceRangeUInt* {.Setting: "RANGE UINT", Default: 1u32}: range[0u32 .. 100u32]
       distanceFloat* {.Setting: "Distance", Default: 1.0f32, RoundW: 6}: float32
-      enabled* {.Setting: "Enabled", Valid: Bools(`true`: @["1"], `false`: @["0"]).}: bool
+      enabled* {.Setting: "Enabled", Valid: Bools01.}: bool
       uint8Attr* {.Setting: "uint8Attr", Default: 5u8.}: uint8
       name* {.Setting: "Name", Default: "Peter Pan".}: string
   var stream: StringStream = newStringStream("""

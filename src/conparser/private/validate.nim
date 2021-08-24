@@ -137,8 +137,13 @@ proc validateValid(nIdentDefs, nPragma: NimNode) =
       error("Valid is not allowed at attribute of type " &  $nTypeInst & ".", nPragmaChild[1])
 
     if nPragmaValidInst == getTypeInst(Bools):
+      var nChilds: NimNode
+      if nPragmaChild[1].kind == nnkStmtListExpr:
+        nChilds = nPragmaChild[1] # Tempalte, like Bools01
+      else:
+        nChilds = nPragmaChild
       var foundTrue, foundFalse: bool = false
-      for idx, nChild in nPragmaChild[1].pairs:
+      for idx, nChild in nChilds[1].pairs:
         if idx == 0:
           continue # Skip Sym "Bools"
         case nChild[0].strVal:
@@ -151,7 +156,7 @@ proc validateValid(nIdentDefs, nPragma: NimNode) =
         if nChild[1][1].findChild(it.kind == nnkStrLit) == nil:
           error("Empty seq at Bools constructor parameter `" & nChild[0].strVal & "`.", nChild[1][1])
       if not foundTrue or not foundFalse:
-        error("Empty seq at Bools constructor parameter of `true` or/and `false`.", nPragmaChild[1])
+        error("Empty seq at Bools constructor parameter of `true` or/and `false`.", nChilds[1])
 
 proc validateAttributes(nAttrRecList: NimNode) =
   for identDefs in nAttrRecList.children:
@@ -162,9 +167,23 @@ proc validateAttributes(nAttrRecList: NimNode) =
     validateDefault(identDefs, nPragma)
     validateValid(identDefs, nPragma)
 
-    # Call recursivly this function for each attribute with type object
-    if identDefs[1].getTypeImpl().kind == nnkObjectTy:
-      validateAttributes(identDefs[1].getImpl().findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))
+    var nObjImpl: NimNode
+    if identDefs[1].typeKind == ntySequence:
+      nObjImpl = identDefs[1][1]
+      if nObjImpl.kind == nnkBracketExpr:
+        nObjImpl = nObjImpl[0]
+      nObjImpl = nObjImpl.getImpl()
+    elif identDefs[1].typeKind == ntyObject:
+      nObjImpl = identDefs[1].getImpl()
+      if nObjImpl[2][2].kind == nnkEmpty:
+        nObjImpl = nObjImpl[2][1][0]
+        if nObjImpl.kind == nnkBracketExpr:
+          nObjImpl = nObjImpl[0]
+        nObjImpl = nObjImpl.getImpl()
+
+    if nObjImpl.kind == nnkTypeDef:
+      validateAttributes(nObjImpl.findChild(it.kind == nnkObjectTy).findChild(it.kind == nnkRecList))
+
 
 macro validate*(tdesc: typedesc): untyped =
   let impl: NimNode = tdesc.getTypeInst()[1].getImpl()
@@ -190,7 +209,7 @@ when isMainModule:
     Armor* = object of RootObj
       team*: range[0u8 .. 1u8]
       kit*: range[0u8 .. 3u8]
-      val* {.Valid: Bools(`true`: @["1"], `false`: @["0"]), Default: false.}: bool
+      val* {.Valid: Bools01, Default: false.}: bool
 
   func getDefaultArmors(): seq[Armor] =
     for team in 0u8..1u8:
