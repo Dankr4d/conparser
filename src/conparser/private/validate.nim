@@ -16,7 +16,10 @@ proc validatePrefix(nIdentDefs, nPragma: NimNode) =
   if nPragma == nil:
     return
   for nPragmaChild in nPragma.children:
+    if nPragmaChild.kind in {nnkSym}:
+      continue
     if nPragmaChild[0] == sym(Prefix):
+
       # Prefix is not allowed on attributes
       error("Prefix is not allowed on attributes.", nPragmaChild[0])
 
@@ -28,6 +31,9 @@ proc validateObject(nIdentDefs, nPragma: NimNode) =
   var foundFormat: bool = false
   var foundBlock: bool = false
   for nPragmaChild in nPragma.children:
+    if nPragmaChild.kind in {nnkSym}:
+      continue
+
     if nPragmaChild[0] == sym(Format):
       foundFormat = true # Found pragma at Attribute
     elif nPragmaChild[0] == sym(BlockValue):
@@ -69,6 +75,9 @@ proc validateDefault(nIdentDefs, nPragma: NimNode) =
     return
 
   for nPragmaChild in nPragma.children:
+    if nPragmaChild.kind in {nnkSym}:
+      continue
+
     if nPragmaChild[0] != sym(Default):
       continue
 
@@ -124,6 +133,9 @@ proc validateValid(nIdentDefs, nPragma: NimNode) =
     return
 
   for nPragmaChild in nPragma.children:
+    if nPragmaChild.kind in {nnkSym}:
+      continue
+
     if nPragmaChild[0] != sym(Valid):
       continue
 
