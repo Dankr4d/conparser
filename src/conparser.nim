@@ -200,9 +200,6 @@ template checkAndParse*[T](obj: T) =
       const setting: string = pre & val.getCustomPragmaVal(Setting)
 
       when T.hasCustomPragma(IgnoreSettings):
-        echo "line.setting: ", line.setting
-        echo "T.getCustomPragmaVal(IgnoreSettings): ", T.getCustomPragmaVal(IgnoreSettings)
-        # if pre & line.setting in T.getCustomPragmaVal(IgnoreSettings):
         for ignoreSetting in  T.getCustomPragmaVal(IgnoreSettings):
           if line.setting in pre & ignoreSetting:
             line.status = line.status or VALID_SETTING or VALID_VALUE
