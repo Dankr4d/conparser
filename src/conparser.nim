@@ -97,6 +97,7 @@ type
     redundantSettings: Table[uint, seq[uint]] ## key = first found line,
                                               ## value = lines which same setting found afterwards
     settingsNotFound*: seq[ConSettingNotFound] ## Settings which hasn't been found.
+    ignoredLines*: seq[string]
     validIntRanges: Table[string, tuple[min, max: BiggestInt]] ## key = attr name, value = valid values
     validFloatRanges: Table[string, tuple[min, max: BiggestFloat]] ## key = attr name, value = valid values
     validEnums: Table[string, seq[string]] ## key = attr name, value = valid values
@@ -197,6 +198,16 @@ template checkAndParse*[T](obj: T) =
   for key, val in obj.fieldPairs:
     when val.hasCustomPragma(Setting):
       const setting: string = pre & val.getCustomPragmaVal(Setting)
+
+      when T.hasCustomPragma(IgnoreSettings):
+        echo "line.setting: ", line.setting
+        echo "T.getCustomPragmaVal(IgnoreSettings): ", T.getCustomPragmaVal(IgnoreSettings)
+        # if pre & line.setting in T.getCustomPragmaVal(IgnoreSettings):
+        for ignoreSetting in  T.getCustomPragmaVal(IgnoreSettings):
+          if line.setting in pre & ignoreSetting:
+            line.status = line.status or VALID_SETTING or VALID_VALUE
+            result.report.ignoredLines.add(line.raw)
+            break
 
       if setting == line.setting:
         line.status = line.status or VALID_SETTING

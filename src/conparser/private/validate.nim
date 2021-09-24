@@ -208,7 +208,7 @@ macro validate*(tdesc: typedesc): untyped =
       nSym = nExprColonExpr
     else:
       nSym = nExprColonExpr[0]
-    if not (nSym in [sym(Prefix), sym(Format), sym(BlockStart)]):
+    if not (nSym in [sym(Prefix), sym(Format), sym(BlockStart), sym(IgnoreSettings)]):
       error(nSym.strVal & " not allowed in object annotation.", nSym)
 
   # Validate object attribute pragmas

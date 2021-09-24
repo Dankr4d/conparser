@@ -20,3 +20,4 @@ template BlockStart*(val: string) {.pragma.} ## Line prefix when to start readin
 template BlockValue*(val: string) {.pragma.} ## Value which must match to read block into object.
 template IgnoreWhenDefault*() {.pragma.} ## Prevent serializing attribute when Default value is equal value
 template IgnoreWhen*(val: string | SomeInteger | SomeFloat | enum | bool | object | seq) {.pragma.} ## The default value when parsing fails (ValueError).
+template IgnoreSettings*(val: seq[string]) {.pragma.}
