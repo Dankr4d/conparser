@@ -40,6 +40,7 @@ This project is currently **WIP**. Means that the usage and naming may change. A
 | BlockStart | `string` | Line prefix when to start reading a block. |
 | BlockValue | `string` | Value which must match to read block into object. |
 | IgnoreWhenDefault | `void` | Prevent serializing attribute when Default value is equal value. |
+| IgnoreWhen | `string \| SomeInteger \| SomeFloat \| enum \| bool` | Prevent serializing attribute when equal. |
 
 ## Example
 ```nim

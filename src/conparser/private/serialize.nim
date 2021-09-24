@@ -47,6 +47,8 @@ template serializeObject*(attr: untyped, fmt: string = ""): string =
       const format: string = attr.getCustomPragmaVal(Format)
     elif type(attr).hasCustomPragma(Format):
       const format: string = type(attr).getCustomPragmaVal(Format)
+    else:
+      const format: string = ""
   attr.serialize(format)
 
 template serializeString*(attr: untyped): string =
@@ -62,7 +64,9 @@ template serializeSeq*(attr: untyped): seq[string] =
       else:
         const format: string = ""
 
-      result.add(serializeObject(item, format))
+      # result.add(serializeObject(item, format))
+      var it = item
+      result.add(serializeObject(it, format))
     else:
       discard # TODO
       # result &= serializeAll(item)

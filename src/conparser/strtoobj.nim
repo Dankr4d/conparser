@@ -11,7 +11,7 @@ import pragmas
 import macros
 
 
-func serialize*[T](t: T, format: string): string =
+func serialize*[T: object](t: T, format: string): string =
   ## Serialize an object with passed format.
 
   var tokenAttribute, tokenDelimiters: string

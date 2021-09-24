@@ -275,7 +275,7 @@ proc readCon*[T](stream: Stream): tuple[obj: T, report: ConReport] =
 
   var lineRaw: string
   var lineIdx: uint = 0
-  var curAttrObjName: string
+  var curAttrObjName {.used.}: string
 
   while stream.readLine(lineRaw): # TODO: Doesn't read last empty line
 
@@ -388,6 +388,11 @@ proc writeCon*[T](t: T, path: string) =
                 str = "" # Ignore writing val because IgnoreWhenDefault is set
               else:
                 str = serializeAll(val2, prefix)
+            elif val2.hasCustomPragma(IgnoreWhen):
+              if val2 == val2.getCustomPragmaVal(IgnoreWhen)[0]:
+                str = "" # Ignore writing val because IgnoreWhenDefault is set
+              else:
+                str = serializeAll(val, prefix)
             else:
               str = serializeAll(val2, prefix)
             # Empty sequence: str.len == 0
@@ -400,6 +405,11 @@ proc writeCon*[T](t: T, path: string) =
         var str: string
         when val.hasCustomPragma(Default) and val.hasCustomPragma(IgnoreWhenDefault):
           if val == val.getCustomPragmaVal(Default)[0]:
+            str = "" # Ignore writing val because IgnoreWhenDefault is set
+          else:
+            str = serializeAll(val, prefix)
+        elif val.hasCustomPragma(IgnoreWhen):
+          if val == val.getCustomPragmaVal(IgnoreWhen)[0]:
             str = "" # Ignore writing val because IgnoreWhenDefault is set
           else:
             str = serializeAll(val, prefix)
