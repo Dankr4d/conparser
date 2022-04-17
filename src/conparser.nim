@@ -81,10 +81,10 @@ export validate
 
 
 const
-  NONE = (high(uint8) shl 7) shr 8 # 0
-  VALID_SETTING = (high(uint8) shl 7) shr 7 # 1
-  VALID_VALUE = (high(uint8) shl 7) shr 6 # 2
-  REDUNDANT = (high(uint8) shl 7) shr 5 # 4
+  NONE {.used.} = (high(uint8) shl 7) shr 8 # 0
+  VALID_SETTING {.used.} = (high(uint8) shl 7) shr 7 # 1
+  VALID_VALUE {.used.} = (high(uint8) shl 7) shr 6 # 2
+  REDUNDANT {.used.} = (high(uint8) shl 7) shr 5 # 4
 
 
 type
